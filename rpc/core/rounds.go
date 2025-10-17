@@ -4,6 +4,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -30,7 +31,7 @@ type RoundInfo struct {
 
 type HeightRounds struct {
 	Height      int64                `json:"height"`
-	CommitRound int32                `json:"commit_round"` // CompleteProposal'dan doldurulur (final teyit için blockstore'a bakabilirsin)
+	CommitRound int32                `json:"commit_round"` // CompleteProposal'dan doldurulur
 	Rounds      map[int32]*RoundInfo `json:"rounds"`
 }
 
@@ -70,15 +71,14 @@ func (c *roundsCache) evictIfNeeded() {
 }
 
 func (c *roundsCache) onNewRound(ev types.EventDataNewRound) {
-    ri := c.getOrCreate(ev.Height, ev.Round)
-    // v0.39.4: Proposer her zaman bir struct (types.ValidatorInfo).
-    // Adres boş olabilir; güvenli kontrol:
-    addr := ev.Proposer.Address
-    if len(addr) > 0 { // Address, []byte alias'ı; uzunlukla kontrol et
-        ri.Proposer = addr.String()
-    } else {
-        ri.Proposer = "" // boşsa boş bırak
-    }
+	ri := c.getOrCreate(ev.Height, ev.Round)
+	// v0.39.4: Proposer struct; adres boş olabilir → uzunlukla kontrol et.
+	addr := ev.Proposer.Address
+	if len(addr) > 0 {
+		ri.Proposer = addr.String()
+	} else {
+		ri.Proposer = ""
+	}
 }
 
 func (c *roundsCache) onVote(ev types.EventDataVote) {
@@ -117,8 +117,6 @@ func (c *roundsCache) onCompleteProposal(ev types.EventDataCompleteProposal) {
 
 // -------------------- OBSERVER INIT --------------------
 
-// Environment struct'ına (env.go) 'rounds *roundsCache' alanını ekleyeceğiz.
-// Bu init çağrısı EventBus aboneliklerini başlatır.
 func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	if size <= 0 {
 		size = 10000
@@ -130,7 +128,7 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 
 	ctx := context.Background()
 
-	// Hazır query sabitlerini kullan (v0.39.x)
+	// Hazır query sabitleri (v0.39.x)
 	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround", types.EventQueryNewRound)
 	if err != nil {
 		return err
@@ -201,7 +199,16 @@ func (env *Environment) ConsensusRounds(_ *rpctypes.Context, height int64) (*Res
 		Height:      hr.Height,
 		CommitRound: hr.CommitRound,
 	}
-	for r, info := range hr.Rounds {
+
+	// round anahtarlarını sırala (stabil çıktı)
+	keys := make([]int32, 0, len(hr.Rounds))
+	for k := range hr.Rounds {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	for _, r := range keys {
+		info := hr.Rounds[r]
 		item := struct {
 			Round           int32  `json:"round"`
 			Proposer        string `json:"proposer"`
@@ -226,7 +233,8 @@ type ResultConsensusRoundDetail struct {
 	Precommits []RoundVote `json:"precommits"`
 }
 
-func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, round int32) (*ResultConsensusRoundDetail, error) {
+// round paramını int32 yerine int al → HTTP-RPC unmarshal hatası kesilir
+func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, round int) (*ResultConsensusRoundDetail, error) {
 	if env.rounds == nil {
 		return nil, fmt.Errorf("consensus rounds observer not initialized")
 	}
@@ -237,13 +245,22 @@ func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, 
 	if !ok {
 		return nil, fmt.Errorf("not found for height %d", height)
 	}
-	ri, ok := hr.Rounds[round]
+	ri, ok := hr.Rounds[int32(round)]
 	if !ok {
 		return nil, fmt.Errorf("not found for height %d round %d", height, round)
 	}
+
+	// nil slice yerine boş dizi döndür (JSON 'null' olmasın)
+	if ri.Prevotes == nil {
+		ri.Prevotes = []RoundVote{}
+	}
+	if ri.Precommits == nil {
+		ri.Precommits = []RoundVote{}
+	}
+
 	return &ResultConsensusRoundDetail{
 		Height:     height,
-		Round:      round,
+		Round:      int32(round),
 		Proposer:   ri.Proposer,
 		Prevotes:   ri.Prevotes,
 		Precommits: ri.Precommits,
