@@ -785,6 +785,10 @@ func (n *Node) startRPC() ([]net.Listener, error) {
 		env.AddUnsafeRoutes(routes)
 	}
 
+	if n.config.RPC.Unsafe {
+	_ = env.InitConsensusRoundsObserver(10000)
+	}
+
 	config := rpcserver.DefaultConfig()
 	config.MaxRequestBatchSize = n.config.RPC.MaxRequestBatchSize
 	config.MaxBodyBytes = n.config.RPC.MaxBodyBytes
