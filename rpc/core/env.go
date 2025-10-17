@@ -86,6 +86,8 @@ type Environment struct {
 	EventBus     *types.EventBus // thread safe
 	Mempool      mempl.Mempool
 
+	rounds *roundsCache
+
 	Logger log.Logger
 
 	Config cfg.RPCConfig
