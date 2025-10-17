@@ -70,11 +70,15 @@ func (c *roundsCache) evictIfNeeded() {
 }
 
 func (c *roundsCache) onNewRound(ev types.EventDataNewRound) {
-	ri := c.getOrCreate(ev.Height, ev.Round)
-	// v0.39.x: proposer ev.Proposer.Address ile gelir (nil koruması iyi olur)
-	if ev.Proposer != nil {
-		ri.Proposer = ev.Proposer.Address.String()
-	}
+    ri := c.getOrCreate(ev.Height, ev.Round)
+    // v0.39.4: Proposer her zaman bir struct (types.ValidatorInfo).
+    // Adres boş olabilir; güvenli kontrol:
+    addr := ev.Proposer.Address
+    if len(addr) > 0 { // Address, []byte alias'ı; uzunlukla kontrol et
+        ri.Proposer = addr.String()
+    } else {
+        ri.Proposer = "" // boşsa boş bırak
+    }
 }
 
 func (c *roundsCache) onVote(ev types.EventDataVote) {
