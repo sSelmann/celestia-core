@@ -8,10 +8,9 @@ import (
 	"sync"
 	"time"
 
-	cmtquery "github.com/cometbft/cometbft/libs/pubsub/query"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
-	"github.com/cometbft/cometbft/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/cometbft/cometbft/types"
 )
 
 // -------------------- DATA MODEL --------------------
@@ -128,18 +127,28 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 
 	ctx := context.Background()
 
-	// Hazır query sabitleri (v0.39.x)
-	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround", types.EventQueryNewRound)
+	// Query'leri sabit isimlerle kur (sürüm farklarına dayanıklı)
+	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround",
+		types.QueryForEvent(types.EventNewRound))
 	if err != nil {
 		return err
 	}
-	subV, err := env.EventBus.Subscribe(ctx, "rounds-vote", types.EventQueryVote)
+
+	subV, err := env.EventBus.Subscribe(ctx, "rounds-vote",
+		types.QueryForEvent(types.EventVote))
 	if err != nil {
 		return err
 	}
-	// CompleteProposal için query
-	qCP, _ := cmtquery.New(fmt.Sprintf("%s='%s'", types.EventTypeKey, types.EventCompleteProposal))
-	subCP, err := env.EventBus.Subscribe(ctx, "rounds-completeproposal", qCP)
+
+	subCP, err := env.EventBus.Subscribe(ctx, "rounds-completeproposal",
+		types.QueryForEvent(types.EventCompleteProposal))
+	if err != nil {
+		return err
+	}
+
+	// Round ilerlemelerini daha sağlam yakalamak için adım event’leri:
+	subStep, err := env.EventBus.Subscribe(ctx, "rounds-step",
+		types.QueryForEvent(types.EventNewRoundStep))
 	if err != nil {
 		return err
 	}
@@ -163,6 +172,14 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 		for msg := range subCP.Out() {
 			if ev, ok := msg.Data().(types.EventDataCompleteProposal); ok {
 				env.rounds.onCompleteProposal(ev)
+			}
+		}
+	}()
+	go func() {
+		for msg := range subStep.Out() {
+			if ev, ok := msg.Data().(types.EventDataRoundState); ok {
+				// round>0 oluştuğunda da kayıt açalım
+				_ = env.rounds.getOrCreate(ev.Height, ev.Round)
 			}
 		}
 	}()
