@@ -30,15 +30,15 @@ type RoundInfo struct {
 
 type HeightRounds struct {
 	Height      int64                `json:"height"`
-	CommitRound int32                `json:"commit_round"` // CompleteProposal'dan doldurulur
+	CommitRound int32                `json:"commit_round"`
 	Rounds      map[int32]*RoundInfo `json:"rounds"`
 }
 
 type roundsCache struct {
 	mu    sync.RWMutex
-	order []int64                 // tutulan yüksekliklerin sırası
-	byH   map[int64]*HeightRounds // height -> snapshot
-	cap   int                     // max height sayısı (ring kapasitesi)
+	order []int64
+	byH   map[int64]*HeightRounds
+	cap   int
 }
 
 func (c *roundsCache) getOrCreate(H int64, R int32) *RoundInfo {
@@ -71,12 +71,9 @@ func (c *roundsCache) evictIfNeeded() {
 
 func (c *roundsCache) onNewRound(ev types.EventDataNewRound) {
 	ri := c.getOrCreate(ev.Height, ev.Round)
-	// v0.39.4: Proposer struct; adres boş olabilir → uzunlukla kontrol et.
 	addr := ev.Proposer.Address
 	if len(addr) > 0 {
 		ri.Proposer = addr.String()
-	} else {
-		ri.Proposer = ""
 	}
 }
 
@@ -85,14 +82,14 @@ func (c *roundsCache) onVote(ev types.EventDataVote) {
 		return
 	}
 	rt := "prevote"
-	if ev.Vote.Type == cmtproto.PrecommitType { // DİKKAT: cmtproto
+	if ev.Vote.Type == cmtproto.PrecommitType {
 		rt = "precommit"
 	}
 	ri := c.getOrCreate(ev.Vote.Height, ev.Vote.Round)
 	r := RoundVote{
 		Validator: ev.Vote.ValidatorAddress.String(),
 		Type:      rt,
-		Timestamp: ev.Vote.Timestamp, // bazı ağlarda boş olabilir
+		Timestamp: ev.Vote.Timestamp,
 	}
 	if rt == "prevote" {
 		ri.Prevotes = append(ri.Prevotes, r)
@@ -112,6 +109,27 @@ func (c *roundsCache) onCompleteProposal(ev types.EventDataCompleteProposal) {
 		c.evictIfNeeded()
 	}
 	hr.CommitRound = ev.Round
+	
+	// CompleteProposal geldiğinde o round'un proposer bilgisini set et
+	ri, ok := hr.Rounds[ev.Round]
+	if !ok {
+		ri = &RoundInfo{Round: ev.Round}
+		hr.Rounds[ev.Round] = ri
+	}
+	// Proposer bilgisini CompleteProposal'dan al
+	if ev.Proposer.Address != nil && len(ev.Proposer.Address) > 0 {
+		ri.Proposer = ev.Proposer.Address.String()
+	}
+}
+
+// YENİ: RoundStep event'lerini handle et
+func (c *roundsCache) onRoundStep(ev types.EventDataRoundState) {
+	// Her yeni round step'te o round için kayıt oluştur
+	ri := c.getOrCreate(ev.Height, ev.Round)
+	
+	// Eğer step "propose" ise ve henüz proposer yoksa, 
+	// validator set'inden hesapla (bu kısım opsiyonel)
+	_ = ri // round kaydı açıldı, proposer başka event'lerden gelecek
 }
 
 // -------------------- OBSERVER INIT --------------------
@@ -127,40 +145,43 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 
 	ctx := context.Background()
 
-	// Query'leri sabit isimlerle kur (sürüm farklarına dayanıklı)
+	// 1. NewRound eventi (sadece round 0 için güvenilir)
 	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround",
 		types.QueryForEvent(types.EventNewRound))
 	if err != nil {
 		return err
 	}
 
+	// 2. Vote eventi (tüm roundlar için)
 	subV, err := env.EventBus.Subscribe(ctx, "rounds-vote",
 		types.QueryForEvent(types.EventVote))
 	if err != nil {
 		return err
 	}
 
+	// 3. CompleteProposal eventi - KRİTİK: Her round'da proposal geldiğinde tetiklenir
 	subCP, err := env.EventBus.Subscribe(ctx, "rounds-completeproposal",
 		types.QueryForEvent(types.EventCompleteProposal))
 	if err != nil {
 		return err
 	}
 
-	// Round ilerlemelerini daha sağlam yakalamak için adım event’leri:
+	// 4. RoundStep eventi - Round değişikliklerini yakalamak için
 	subStep, err := env.EventBus.Subscribe(ctx, "rounds-step",
 		types.QueryForEvent(types.EventNewRoundStep))
 	if err != nil {
 		return err
 	}
 
-	// Consumer goroutineleri
+	// Consumer goroutines
 	go func() {
 		for msg := range subNR.Out() {
-			if ev, ok := msg.Data().(types.EventDataNewRound); ok { // DİKKAT: Data()
+			if ev, ok := msg.Data().(types.EventDataNewRound); ok {
 				env.rounds.onNewRound(ev)
 			}
 		}
 	}()
+	
 	go func() {
 		for msg := range subV.Out() {
 			if ev, ok := msg.Data().(types.EventDataVote); ok {
@@ -168,6 +189,7 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 			}
 		}
 	}()
+	
 	go func() {
 		for msg := range subCP.Out() {
 			if ev, ok := msg.Data().(types.EventDataCompleteProposal); ok {
@@ -175,11 +197,12 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 			}
 		}
 	}()
+	
 	go func() {
 		for msg := range subStep.Out() {
+			// DÜZELTİLDİ: Doğru event tipi
 			if ev, ok := msg.Data().(types.EventDataRoundState); ok {
-				// round>0 oluştuğunda da kayıt açalım
-				_ = env.rounds.getOrCreate(ev.Height, ev.Round)
+				env.rounds.onRoundStep(ev)
 			}
 		}
 	}()
@@ -217,7 +240,6 @@ func (env *Environment) ConsensusRounds(_ *rpctypes.Context, height int64) (*Res
 		CommitRound: hr.CommitRound,
 	}
 
-	// round anahtarlarını sırala (stabil çıktı)
 	keys := make([]int32, 0, len(hr.Rounds))
 	for k := range hr.Rounds {
 		keys = append(keys, k)
@@ -250,7 +272,6 @@ type ResultConsensusRoundDetail struct {
 	Precommits []RoundVote `json:"precommits"`
 }
 
-// round paramını int32 yerine int al → HTTP-RPC unmarshal hatası kesilir
 func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, round int) (*ResultConsensusRoundDetail, error) {
 	if env.rounds == nil {
 		return nil, fmt.Errorf("consensus rounds observer not initialized")
@@ -267,7 +288,6 @@ func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, 
 		return nil, fmt.Errorf("not found for height %d round %d", height, round)
 	}
 
-	// nil slice yerine boş dizi döndür (JSON 'null' olmasın)
 	if ri.Prevotes == nil {
 		ri.Prevotes = []RoundVote{}
 	}
