@@ -39,6 +39,7 @@ type roundsCache struct {
 	order []int64
 	byH   map[int64]*HeightRounds
 	cap   int
+	env   *Environment // validator set'e erişmek için
 }
 
 func (c *roundsCache) getOrCreate(H int64, R int32) *RoundInfo {
@@ -69,11 +70,45 @@ func (c *roundsCache) evictIfNeeded() {
 	}
 }
 
+// Proposer'ı validator set'inden hesapla
+func (c *roundsCache) calculateProposer(height int64, round int32) string {
+	if c.env == nil || c.env.StateStore == nil {
+		return ""
+	}
+	
+	// StateStore'dan validator set'i al
+	valSet, err := c.env.StateStore.LoadValidators(height)
+	if err != nil || valSet == nil {
+		return ""
+	}
+	
+	// CometBFT proposer selection: height ve round'a göre rotasyon
+	proposer := valSet.GetProposer()
+	if proposer == nil {
+		return ""
+	}
+	
+	// Round > 0 için proposer'ı ilerlet
+	for i := int32(0); i < round; i++ {
+		valSet.IncrementProposerPriority(1)
+	}
+	
+	proposer = valSet.GetProposer()
+	if proposer != nil {
+		return proposer.Address.String()
+	}
+	
+	return ""
+}
+
 func (c *roundsCache) onNewRound(ev types.EventDataNewRound) {
 	ri := c.getOrCreate(ev.Height, ev.Round)
 	addr := ev.Proposer.Address
 	if len(addr) > 0 {
 		ri.Proposer = addr.String()
+	} else {
+		// Eğer event'te yoksa hesapla
+		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
 	}
 }
 
@@ -86,6 +121,12 @@ func (c *roundsCache) onVote(ev types.EventDataVote) {
 		rt = "precommit"
 	}
 	ri := c.getOrCreate(ev.Vote.Height, ev.Vote.Round)
+	
+	// Eğer bu round için henüz proposer yoksa, hesapla
+	if ri.Proposer == "" {
+		ri.Proposer = c.calculateProposer(ev.Vote.Height, ev.Vote.Round)
+	}
+	
 	r := RoundVote{
 		Validator: ev.Vote.ValidatorAddress.String(),
 		Type:      rt,
@@ -101,6 +142,7 @@ func (c *roundsCache) onVote(ev types.EventDataVote) {
 func (c *roundsCache) onCompleteProposal(ev types.EventDataCompleteProposal) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	
 	hr, ok := c.byH[ev.Height]
 	if !ok {
 		hr = &HeightRounds{Height: ev.Height, Rounds: make(map[int32]*RoundInfo)}
@@ -110,26 +152,26 @@ func (c *roundsCache) onCompleteProposal(ev types.EventDataCompleteProposal) {
 	}
 	hr.CommitRound = ev.Round
 	
-	// CompleteProposal geldiğinde o round'un proposer bilgisini set et
+	// Round kaydını oluştur
 	ri, ok := hr.Rounds[ev.Round]
 	if !ok {
 		ri = &RoundInfo{Round: ev.Round}
 		hr.Rounds[ev.Round] = ri
 	}
-	// Proposer bilgisini CompleteProposal'dan al
-	if ev.Proposer.Address != nil && len(ev.Proposer.Address) > 0 {
-		ri.Proposer = ev.Proposer.Address.String()
+	
+	// Proposer'ı hesapla
+	if ri.Proposer == "" {
+		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
 	}
 }
 
-// YENİ: RoundStep event'lerini handle et
 func (c *roundsCache) onRoundStep(ev types.EventDataRoundState) {
-	// Her yeni round step'te o round için kayıt oluştur
 	ri := c.getOrCreate(ev.Height, ev.Round)
 	
-	// Eğer step "propose" ise ve henüz proposer yoksa, 
-	// validator set'inden hesapla (bu kısım opsiyonel)
-	_ = ri // round kaydı açıldı, proposer başka event'lerden gelecek
+	// Proposer'ı hesapla
+	if ri.Proposer == "" {
+		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
+	}
 }
 
 // -------------------- OBSERVER INIT --------------------
@@ -141,32 +183,29 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	env.rounds = &roundsCache{
 		byH: make(map[int64]*HeightRounds),
 		cap: size,
+		env: env, // Environment referansı
 	}
 
 	ctx := context.Background()
 
-	// 1. NewRound eventi (sadece round 0 için güvenilir)
 	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround",
 		types.QueryForEvent(types.EventNewRound))
 	if err != nil {
 		return err
 	}
 
-	// 2. Vote eventi (tüm roundlar için)
 	subV, err := env.EventBus.Subscribe(ctx, "rounds-vote",
 		types.QueryForEvent(types.EventVote))
 	if err != nil {
 		return err
 	}
 
-	// 3. CompleteProposal eventi - KRİTİK: Her round'da proposal geldiğinde tetiklenir
 	subCP, err := env.EventBus.Subscribe(ctx, "rounds-completeproposal",
 		types.QueryForEvent(types.EventCompleteProposal))
 	if err != nil {
 		return err
 	}
 
-	// 4. RoundStep eventi - Round değişikliklerini yakalamak için
 	subStep, err := env.EventBus.Subscribe(ctx, "rounds-step",
 		types.QueryForEvent(types.EventNewRoundStep))
 	if err != nil {
@@ -200,7 +239,6 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	
 	go func() {
 		for msg := range subStep.Out() {
-			// DÜZELTİLDİ: Doğru event tipi
 			if ev, ok := msg.Data().(types.EventDataRoundState); ok {
 				env.rounds.onRoundStep(ev)
 			}
