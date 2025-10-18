@@ -36,6 +36,7 @@ import (
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
 	cmttime "github.com/cometbft/cometbft/types/time"
+	"github.com/cometbft/cometbft/internal/roundlog"
 )
 
 // Consensus sentinel errors
@@ -880,6 +881,29 @@ func (cs *State) newStep() {
 
 	cs.nSteps++
 
+	switch cs.rs.Step {
+case cstypes.RoundStepPrevote:
+    vs := cs.rs.Votes.Prevotes(cs.rs.Round)
+    if vs != nil {
+        ba := vs.BitArray()
+        cnt := 0
+        for i := 0; i < vs.Size(); i++ {
+            if ba.GetIndex(i) { cnt++ }
+        }
+        roundlog.Default().OnPrevoteCount(cs.rs.Height, cs.rs.Round, cnt)
+    }
+case cstypes.RoundStepPrecommit:
+    vs := cs.rs.Votes.Precommits(cs.rs.Round)
+    if vs != nil {
+        ba := vs.BitArray()
+        cnt := 0
+        for i := 0; i < vs.Size(); i++ {
+            if ba.GetIndex(i) { cnt++ }
+        }
+        roundlog.Default().OnPrecommitCount(cs.rs.Height, cs.rs.Round, cnt)
+    }
+}
+
 	// newStep is called by updateToState in NewState before the eventBus is set!
 	if cs.eventBus != nil {
 		if err := cs.eventBus.PublishEventNewRoundStep(rs); err != nil {
@@ -1200,6 +1224,9 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	// If round == 0, we've already reset these upon new height, and meanwhile
 	// we might have received a proposal for round 0.
 	propAddress := validators.GetProposer().PubKey.Address()
+
+	roundlog.Default().OnNewRound(height, round, propAddress.String(), time.Now())
+
 	if round != 0 {
 		logger.Info("resetting proposal info", "proposer", propAddress)
 		cs.rs.Proposal = nil
@@ -1872,6 +1899,7 @@ func (cs *State) finalizeCommit(height int64) {
 		return
 	}
 
+	roundlog.Default().SetCommitRound(height, cs.rs.CommitRound)
 	cs.calculatePrevoteMessageDelayMetrics()
 
 	blockID, ok := cs.rs.Votes.Precommits(cs.rs.CommitRound).TwoThirdsMajority()

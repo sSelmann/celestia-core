@@ -60,6 +60,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
 		"tx_status":                 rpc.NewRPCFunc(env.TxStatus, "hash"),
 		"proposer_schedule": 	  rpc.NewRPCFunc(env.ProposerSchedule, "height,rounds", rpc.Cacheable("height")),
+		"consensus_rounds":   	  rpc.NewRPCFunc(env.ConsensusRounds, "height", rpc.Cacheable("height"))
 	}
 }
 
