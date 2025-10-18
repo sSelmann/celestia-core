@@ -59,6 +59,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height")),
 		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
 		"tx_status":                 rpc.NewRPCFunc(env.TxStatus, "hash"),
+		"proposer_schedule": 	  rpc.NewRPCFunc(env.ProposerSchedule, "height,rounds", rpc.Cacheable("height")),
 	}
 }
 
@@ -70,7 +71,4 @@ func (env *Environment) AddUnsafeRoutes(routes RoutesMap) {
 	routes["unsafe_flush_mempool"] = rpc.NewRPCFunc(env.UnsafeFlushMempool, "")
 	routes["consensus_rounds"]       = rpc.NewRPCFunc(env.ConsensusRounds, "height")
 	routes["consensus_round_detail"] = rpc.NewRPCFunc(env.ConsensusRoundDetail, "height,round")
-	routes["proposer_schedule"] = rpc.NewRPCFunc(env.ProposerSchedule, "height,maxRounds")
-	routes["next_proposer"]     = rpc.NewRPCFunc(env.NextProposer, "")
-	routes["who_is_proposer"]   = rpc.NewRPCFunc(env.WhoIsProposer, "height,round")
 }
