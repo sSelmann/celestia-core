@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
+	cmtquery "github.com/cometbft/cometbft/libs/pubsub/query"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
-	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"github.com/cometbft/cometbft/types"
 )
 
@@ -19,6 +19,7 @@ type RoundVote struct {
 	Validator string    `json:"validator"`
 	Type      string    `json:"type"` // "prevote" | "precommit"
 	Timestamp time.Time `json:"ts"`
+	BlockID   string    `json:"block_id,omitempty"` // hangi block'a vote edildi
 }
 
 type RoundInfo struct {
@@ -39,7 +40,6 @@ type roundsCache struct {
 	order []int64
 	byH   map[int64]*HeightRounds
 	cap   int
-	env   *Environment // validator set'e erişmek için
 }
 
 func (c *roundsCache) getOrCreate(H int64, R int32) *RoundInfo {
@@ -70,45 +70,10 @@ func (c *roundsCache) evictIfNeeded() {
 	}
 }
 
-// Proposer'ı validator set'inden hesapla
-func (c *roundsCache) calculateProposer(height int64, round int32) string {
-	if c.env == nil || c.env.StateStore == nil {
-		return ""
-	}
-	
-	// StateStore'dan validator set'i al
-	valSet, err := c.env.StateStore.LoadValidators(height)
-	if err != nil || valSet == nil {
-		return ""
-	}
-	
-	// CometBFT proposer selection: height ve round'a göre rotasyon
-	proposer := valSet.GetProposer()
-	if proposer == nil {
-		return ""
-	}
-	
-	// Round > 0 için proposer'ı ilerlet
-	for i := int32(0); i < round; i++ {
-		valSet.IncrementProposerPriority(1)
-	}
-	
-	proposer = valSet.GetProposer()
-	if proposer != nil {
-		return proposer.Address.String()
-	}
-	
-	return ""
-}
-
 func (c *roundsCache) onNewRound(ev types.EventDataNewRound) {
 	ri := c.getOrCreate(ev.Height, ev.Round)
-	addr := ev.Proposer.Address
-	if len(addr) > 0 {
-		ri.Proposer = addr.String()
-	} else {
-		// Eğer event'te yoksa hesapla
-		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
+	if ev.Proposer.Address != nil && len(ev.Proposer.Address) > 0 {
+		ri.Proposer = ev.Proposer.Address.String()
 	}
 }
 
@@ -116,26 +81,36 @@ func (c *roundsCache) onVote(ev types.EventDataVote) {
 	if ev.Vote == nil {
 		return
 	}
+	
 	rt := "prevote"
-	if ev.Vote.Type == cmtproto.PrecommitType {
+	if ev.Vote.Type == types.PrecommitType {
 		rt = "precommit"
 	}
+	
 	ri := c.getOrCreate(ev.Vote.Height, ev.Vote.Round)
 	
-	// Eğer bu round için henüz proposer yoksa, hesapla
-	if ri.Proposer == "" {
-		ri.Proposer = c.calculateProposer(ev.Vote.Height, ev.Vote.Round)
+	blockIDStr := ""
+	if ev.Vote.BlockID != nil && !ev.Vote.BlockID.IsNil() {
+		blockIDStr = ev.Vote.BlockID.Hash.String()
 	}
 	
 	r := RoundVote{
 		Validator: ev.Vote.ValidatorAddress.String(),
 		Type:      rt,
 		Timestamp: ev.Vote.Timestamp,
+		BlockID:   blockIDStr,
 	}
+	
 	if rt == "prevote" {
 		ri.Prevotes = append(ri.Prevotes, r)
 	} else {
 		ri.Precommits = append(ri.Precommits, r)
+	}
+	
+	// KRİTİK: Eğer bu round için proposer yoksa, ilk non-nil prevote'u atan
+	// validator muhtemelen proposer'dır (çünkü kendi block'una vote eder)
+	if ri.Proposer == "" && rt == "prevote" && blockIDStr != "" {
+		ri.Proposer = ev.Vote.ValidatorAddress.String()
 	}
 }
 
@@ -152,26 +127,42 @@ func (c *roundsCache) onCompleteProposal(ev types.EventDataCompleteProposal) {
 	}
 	hr.CommitRound = ev.Round
 	
-	// Round kaydını oluştur
+	// Round kaydını oluştur (eğer yoksa)
+	if _, ok := hr.Rounds[ev.Round]; !ok {
+		hr.Rounds[ev.Round] = &RoundInfo{Round: ev.Round}
+	}
+}
+
+// YENİ: Proposal event'ini dinle - bu her round'da proposal geldiğinde tetiklenir
+func (c *roundsCache) onProposal(ev types.EventDataCompleteProposal) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	
+	hr, ok := c.byH[ev.Height]
+	if !ok {
+		hr = &HeightRounds{Height: ev.Height, Rounds: make(map[int32]*RoundInfo)}
+		c.byH[ev.Height] = hr
+		c.order = append(c.order, ev.Height)
+		c.evictIfNeeded()
+	}
+	
 	ri, ok := hr.Rounds[ev.Round]
 	if !ok {
 		ri = &RoundInfo{Round: ev.Round}
 		hr.Rounds[ev.Round] = ri
 	}
 	
-	// Proposer'ı hesapla
-	if ri.Proposer == "" {
-		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
-	}
+	// BlockID'den proposer'ı çıkarsamaya çalış
+	// Alternatif: POLRound bilgisinden yararlan
 }
 
-func (c *roundsCache) onRoundStep(ev types.EventDataRoundState) {
+// YENI: RoundState event'ini dinle
+func (c *roundsCache) onRoundState(ev types.EventDataRoundState) {
+	// Her round değişiminde kayıt oluştur
 	ri := c.getOrCreate(ev.Height, ev.Round)
 	
-	// Proposer'ı hesapla
-	if ri.Proposer == "" {
-		ri.Proposer = c.calculateProposer(ev.Height, ev.Round)
-	}
+	// RoundState içinde StartTime gibi bilgiler olabilir
+	_ = ri
 }
 
 // -------------------- OBSERVER INIT --------------------
@@ -183,39 +174,43 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	env.rounds = &roundsCache{
 		byH: make(map[int64]*HeightRounds),
 		cap: size,
-		env: env, // Environment referansı
 	}
 
 	ctx := context.Background()
 
-	subNR, err := env.EventBus.Subscribe(ctx, "rounds-newround",
-		types.QueryForEvent(types.EventNewRound))
+	// 1) NewRound (sadece round 0 için güvenilir)
+	subNR, err := env.EventBus.Subscribe(ctx, "rounds-observer-newround", 
+		types.EventQueryNewRound)
 	if err != nil {
 		return err
 	}
 
-	subV, err := env.EventBus.Subscribe(ctx, "rounds-vote",
-		types.QueryForEvent(types.EventVote))
+	// 2) Vote (TÜM roundlar için güvenilir - en önemli veri kaynağımız)
+	subV, err := env.EventBus.Subscribe(ctx, "rounds-observer-vote", 
+		types.EventQueryVote)
 	if err != nil {
 		return err
 	}
 
-	subCP, err := env.EventBus.Subscribe(ctx, "rounds-completeproposal",
-		types.QueryForEvent(types.EventCompleteProposal))
+	// 3) CompleteProposal
+	qCP, _ := cmtquery.New(fmt.Sprintf("%s='%s'", types.EventTypeKey, types.EventCompleteProposal))
+	subCP, err := env.EventBus.Subscribe(ctx, "rounds-observer-completeproposal", qCP)
 	if err != nil {
 		return err
 	}
 
-	subStep, err := env.EventBus.Subscribe(ctx, "rounds-step",
-		types.QueryForEvent(types.EventNewRoundStep))
+	// 4) YENİ: NewRoundStep - round değişikliklerini yakalamak için
+	qStep, _ := cmtquery.New(fmt.Sprintf("%s='%s'", types.EventTypeKey, types.EventNewRoundStep))
+	subStep, err := env.EventBus.Subscribe(ctx, "rounds-observer-step", qStep)
 	if err != nil {
-		return err
+		// Hata olsa bile devam et (eski versiyonlarda olmayabilir)
+		subStep = nil
 	}
 
 	// Consumer goroutines
 	go func() {
 		for msg := range subNR.Out() {
-			if ev, ok := msg.Data().(types.EventDataNewRound); ok {
+			if ev, ok := msg.Data.(types.EventDataNewRound); ok {
 				env.rounds.onNewRound(ev)
 			}
 		}
@@ -223,7 +218,7 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	
 	go func() {
 		for msg := range subV.Out() {
-			if ev, ok := msg.Data().(types.EventDataVote); ok {
+			if ev, ok := msg.Data.(types.EventDataVote); ok {
 				env.rounds.onVote(ev)
 			}
 		}
@@ -231,19 +226,21 @@ func (env *Environment) InitConsensusRoundsObserver(size int) error {
 	
 	go func() {
 		for msg := range subCP.Out() {
-			if ev, ok := msg.Data().(types.EventDataCompleteProposal); ok {
+			if ev, ok := msg.Data.(types.EventDataCompleteProposal); ok {
 				env.rounds.onCompleteProposal(ev)
 			}
 		}
 	}()
 	
-	go func() {
-		for msg := range subStep.Out() {
-			if ev, ok := msg.Data().(types.EventDataRoundState); ok {
-				env.rounds.onRoundStep(ev)
+	if subStep != nil {
+		go func() {
+			for msg := range subStep.Out() {
+				if ev, ok := msg.Data.(types.EventDataRoundState); ok {
+					env.rounds.onRoundState(ev)
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	return nil
 }
@@ -277,7 +274,8 @@ func (env *Environment) ConsensusRounds(_ *rpctypes.Context, height int64) (*Res
 		Height:      hr.Height,
 		CommitRound: hr.CommitRound,
 	}
-
+	
+	// Round'ları sıralı göster
 	keys := make([]int32, 0, len(hr.Rounds))
 	for k := range hr.Rounds {
 		keys = append(keys, k)
@@ -310,7 +308,7 @@ type ResultConsensusRoundDetail struct {
 	Precommits []RoundVote `json:"precommits"`
 }
 
-func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, round int) (*ResultConsensusRoundDetail, error) {
+func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, round int32) (*ResultConsensusRoundDetail, error) {
 	if env.rounds == nil {
 		return nil, fmt.Errorf("consensus rounds observer not initialized")
 	}
@@ -321,21 +319,22 @@ func (env *Environment) ConsensusRoundDetail(_ *rpctypes.Context, height int64, 
 	if !ok {
 		return nil, fmt.Errorf("not found for height %d", height)
 	}
-	ri, ok := hr.Rounds[int32(round)]
+	ri, ok := hr.Rounds[round]
 	if !ok {
 		return nil, fmt.Errorf("not found for height %d round %d", height, round)
 	}
-
+	
+	// Nil slice yerine boş array döndür
 	if ri.Prevotes == nil {
 		ri.Prevotes = []RoundVote{}
 	}
 	if ri.Precommits == nil {
 		ri.Precommits = []RoundVote{}
 	}
-
+	
 	return &ResultConsensusRoundDetail{
 		Height:     height,
-		Round:      int32(round),
+		Round:      round,
 		Proposer:   ri.Proposer,
 		Prevotes:   ri.Prevotes,
 		Precommits: ri.Precommits,
