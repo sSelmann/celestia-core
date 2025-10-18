@@ -69,6 +69,4 @@ func (env *Environment) AddUnsafeRoutes(routes RoutesMap) {
 	routes["dial_seeds"] = rpc.NewRPCFunc(env.UnsafeDialSeeds, "seeds")
 	routes["dial_peers"] = rpc.NewRPCFunc(env.UnsafeDialPeers, "peers,persistent,unconditional,private")
 	routes["unsafe_flush_mempool"] = rpc.NewRPCFunc(env.UnsafeFlushMempool, "")
-	routes["consensus_rounds"]       = rpc.NewRPCFunc(env.ConsensusRounds, "height")
-	routes["consensus_round_detail"] = rpc.NewRPCFunc(env.ConsensusRoundDetail, "height,round")
 }
