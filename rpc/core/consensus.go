@@ -143,13 +143,27 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-	// Get the validator set for this height
-	// IMPORTANT: LoadValidators returns the validator set with proposer priorities
-	// already set for this height (round 0). It handles checkpoint loading and
-	// increments proposer priority from the checkpoint height to the requested height.
-	validators, err := env.StateStore.LoadValidators(height)
-	if err != nil {
-		return nil, err
+	// Get the validator set for the PREVIOUS height
+	// This is the key insight: we need the validator set as it was BEFORE 
+	// being incremented for this height
+	var validators *types.ValidatorSet
+	var err error
+	
+	if height == 1 {
+		// For height 1, use the genesis validator set
+		validators, err = env.StateStore.LoadValidators(height)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// For height > 1, load the validator set from the previous height
+		// This gives us the validator set BEFORE it was incremented for the current height
+		validators, err = env.StateStore.LoadValidators(height - 1)
+		if err != nil {
+			return nil, err
+		}
+		// Now increment by 1 to get to the current height's round 0 state
+		validators = validators.CopyIncrementProposerPriority(1)
 	}
 
 	// Calculate proposers for each round from 0 to the commit round
@@ -158,10 +172,6 @@ func (env *Environment) GetProposerByRound(
 	commitRound := commit.Round
 	
 	// Start with the validator set at round 0
-	// The validator set from LoadValidators has the correct proposer priorities
-	// for round 0 of this height, BUT the Proposer field might be set from the
-	// IncrementProposerPriority call during loading. We need to reset it so that
-	// GetProposer() recalculates based on the current priorities.
 	valSet := validators.Copy()
 	valSet.Proposer = nil // Reset proposer to force recalculation
 	
