@@ -155,13 +155,19 @@ func (env *Environment) GetProposerByRound(
 	for round := int32(0); round <= commitRound; round++ {
 		// For each round, we need to calculate the proposer
 		// This replicates the logic from consensus/state.go:enterNewRound
+		// The key insight is that we need to simulate what happens when we enter each round
+		// from the perspective of round 0
+		
+		// Create a fresh copy for this round calculation
+		roundValSet := validators.Copy()
+		
+		// If this is not round 0, increment proposer priority by the round number
+		// This simulates what happens in enterNewRound when cs.rs.Round < round
 		if round > 0 {
-			// Increment proposer priority for the round difference
-			// This is exactly what consensus does: validators.IncrementProposerPriority(round - previousRound)
-			valSet.IncrementProposerPriority(1)
+			roundValSet.IncrementProposerPriority(round)
 		}
 		
-		proposer := valSet.GetProposer()
+		proposer := roundValSet.GetProposer()
 		if proposer == nil {
 			break
 		}

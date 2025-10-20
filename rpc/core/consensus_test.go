@@ -94,6 +94,11 @@ func TestGetProposerByRound(t *testing.T) {
 		}
 		assert.True(t, found, "Proposer %s for round %d should be a valid validator", proposerAddr, round)
 	}
+	
+	// Verify that round 0 proposer is the same as the initial proposer
+	round0Proposer := proposers[0]
+	initialProposer := validators.GetProposer()
+	assert.Equal(t, initialProposer.Address.String(), round0Proposer, "Round 0 proposer should match initial proposer")
 }
 
 func TestGetProposerByRoundNoCommit(t *testing.T) {
