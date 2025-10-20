@@ -131,6 +131,12 @@ func (env *Environment) GetProposerByRound(
 		return nil, err
 	}
 
+	// Load the block to get the header proposer address
+	block := env.BlockStore.LoadBlock(height)
+	if block == nil {
+		return nil, fmt.Errorf("no block found for height %d", height)
+	}
+
 	// Load the commit for this height to get the actual round information
 	commit := env.BlockStore.LoadSeenCommit(height)
 	if commit == nil {
@@ -138,6 +144,9 @@ func (env *Environment) GetProposerByRound(
 	}
 
 	// Get the validator set for this height
+	// IMPORTANT: LoadValidators returns the validator set with proposer priorities
+	// already set for this height (round 0). It handles checkpoint loading and
+	// increments proposer priority from the checkpoint height to the requested height.
 	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
@@ -149,7 +158,21 @@ func (env *Environment) GetProposerByRound(
 	commitRound := commit.Round
 	
 	// Start with the validator set at round 0
+	// The validator set from LoadValidators has the correct proposer priorities
+	// for round 0 of this height, BUT the Proposer field might be set from the
+	// IncrementProposerPriority call during loading. We need to reset it so that
+	// GetProposer() recalculates based on the current priorities.
 	valSet := validators.Copy()
+	valSet.Proposer = nil // Reset proposer to force recalculation
+	
+	// Debug: log the initial proposer for round 0
+	initialProposer := valSet.GetProposer()
+	if initialProposer != nil {
+		env.Logger.Debug("Round 0 proposer",
+			"height", height,
+			"proposer", initialProposer.Address.String(),
+			"header_proposer", block.ProposerAddress.String())
+	}
 	
 	for round := int32(0); round <= commitRound; round++ {
 		// For each round, we need to calculate the proposer
@@ -171,6 +194,19 @@ func (env *Environment) GetProposerByRound(
 			Round:           round,
 			ProposerAddress: proposer.Address.String(),
 		})
+	}
+
+	// Verify our calculation by checking if the commit round proposer matches the block header proposer
+	if len(rounds) > 0 && int(commitRound) < len(rounds) {
+		calculatedProposer := rounds[commitRound].ProposerAddress
+		headerProposer := block.ProposerAddress.String()
+		if calculatedProposer != headerProposer {
+			env.Logger.Error("Proposer mismatch",
+				"height", height,
+				"commit_round", commitRound,
+				"calculated_proposer", calculatedProposer,
+				"header_proposer", headerProposer)
+		}
 	}
 
 	return &ctypes.ResultProposerByRound{
