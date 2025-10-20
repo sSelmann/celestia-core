@@ -143,26 +143,47 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-	// Get the validator set for the PREVIOUS height
-	// This is the key insight: we need the validator set as it was BEFORE 
-	// being incremented for this height
-	var validators *types.ValidatorSet
+	// Load the validator set for this height
+	// The validator set from LoadValidators should have the correct proposer priorities
+	// for round 0 of this height
+	validators, err := env.StateStore.LoadValidators(height)
+	if err != nil {
+		return nil, err
+	}
 	
-	if height == 1 {
-		// For height 1, use the genesis validator set
-		validators, err = env.StateStore.LoadValidators(height)
-		if err != nil {
-			return nil, err
+	// Find which validator in the set has the header proposer address
+	headerProposerFound := false
+	for i, val := range validators.Validators {
+		if val.Address.String() == block.ProposerAddress.String() {
+			env.Logger.Info("Header proposer found in validator set",
+				"height", height,
+				"index", i,
+				"address", val.Address.String(),
+				"priority", val.ProposerPriority,
+				"voting_power", val.VotingPower)
+			headerProposerFound = true
+			break
 		}
-	} else {
-		// For height > 1, load the validator set from the previous height
-		// This gives us the validator set BEFORE it was incremented for the current height
-		validators, err = env.StateStore.LoadValidators(height - 1)
-		if err != nil {
-			return nil, err
-		}
-		// Now increment by 1 to get to the current height's round 0 state
-		validators = validators.CopyIncrementProposerPriority(1)
+	}
+	
+	if !headerProposerFound {
+		env.Logger.Error("Header proposer NOT found in validator set!",
+			"height", height,
+			"header_proposer", block.ProposerAddress.String())
+	}
+	
+	// Find the proposer using the same algorithm as findProposer()
+	var calculatedProposer *types.Validator
+	for _, val := range validators.Validators {
+		calculatedProposer = val.CompareProposerPriority(calculatedProposer)
+	}
+	
+	if calculatedProposer != nil {
+		env.Logger.Info("Calculated round 0 proposer",
+			"height", height,
+			"address", calculatedProposer.Address.String(),
+			"priority", calculatedProposer.ProposerPriority,
+			"matches_header", calculatedProposer.Address.String() == block.ProposerAddress.String())
 	}
 
 	// Calculate proposers for each round from 0 to the commit round
