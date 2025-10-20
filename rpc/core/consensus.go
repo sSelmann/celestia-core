@@ -175,7 +175,11 @@ func (env *Environment) GetProposerByRound(
 	// Find the proposer using the same algorithm as findProposer()
 	var calculatedProposer *types.Validator
 	for _, val := range validators.Validators {
-		calculatedProposer = val.CompareProposerPriority(calculatedProposer)
+		if calculatedProposer == nil {
+			calculatedProposer = val
+		} else {
+			calculatedProposer = calculatedProposer.CompareProposerPriority(val)
+		}
 	}
 	
 	if calculatedProposer != nil {
