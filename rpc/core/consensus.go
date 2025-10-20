@@ -147,7 +147,6 @@ func (env *Environment) GetProposerByRound(
 	// This is the key insight: we need the validator set as it was BEFORE 
 	// being incremented for this height
 	var validators *types.ValidatorSet
-	var err error
 	
 	if height == 1 {
 		// For height 1, use the genesis validator set
