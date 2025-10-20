@@ -178,11 +178,6 @@ func (env *Environment) GetProposerByRound(
 		}
 	}
 	
-	// Create a fresh validator set
-	// Note: NewValidatorSet will call IncrementProposerPriority(1) internally
-	// So the resulting set will have priorities as if it's been incremented once
-	freshVals := types.NewValidatorSet(valList)
-	
 	// Now we have a validator set with consistent, predictable priorities
 	// We need to increment it to match the current height
 	// The formula is: increment by (height - genesisHeight - 1) because NewValidatorSet already did +1
