@@ -148,10 +148,6 @@ func (env *Environment) GetProposerByRound(
 	var rounds []ctypes.ProposerRoundInfo
 	commitRound := commit.Round
 	
-	// Start with the validator set at round 0
-	// We need to simulate the exact same proposer selection as consensus
-	valSet := validators.Copy()
-	
 	for round := int32(0); round <= commitRound; round++ {
 		// For each round, we need to calculate the proposer
 		// This replicates the logic from consensus/state.go:enterNewRound
