@@ -154,6 +154,13 @@ type ResultConsensusParams struct {
 	ConsensusParams types.ConsensusParams `json:"consensus_params"`
 }
 
+// Proposers for each round in a given block height
+type ResultProposerByRound struct {
+	BlockHeight int64              `json:"block_height"`
+	Proposers   []types.Validator  `json:"proposers"`
+	Count       int                `json:"count"`
+}
+
 // Info about the consensus state.
 // UNSTABLE
 type ResultDumpConsensusState struct {

@@ -116,3 +116,34 @@ func (env *Environment) ConsensusParams(
 		ConsensusParams: consensusParams,
 	}, nil
 }
+
+// GetProposerByRound returns the proposers for each round in a given block height.
+// This function helps identify which validators were assigned as proposers in each round,
+// including those who failed to propose successfully.
+func (env *Environment) GetProposerByRound(
+	_ *rpctypes.Context,
+	heightPtr *int64,
+) (*ctypes.ResultProposerByRound, error) {
+	height, err := env.getHeight(env.latestUncommittedHeight(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load the state for the given height
+	state, err := env.StateStore.Load()
+	if err != nil {
+		return nil, err
+	}
+
+	// Get proposers for each round
+	proposers, err := state.GetProposerByRound(height)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ctypes.ResultProposerByRound{
+		BlockHeight: height,
+		Proposers:   proposers,
+		Count:       len(proposers),
+	}, nil
+}

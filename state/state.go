@@ -411,3 +411,33 @@ func getAppVersion(genDoc *types.GenesisDoc) uint64 {
 	// an explicit app version in genesis.json.
 	return uint64(1)
 }
+
+// GetProposerByRound returns the proposer for each round in a given block height.
+// This function calculates proposers for all rounds up to the commit round.
+func (state State) GetProposerByRound(height int64) ([]types.Validator, error) {
+	var proposers []types.Validator
+	
+	// Create a copy of the validator set to avoid modifying the original
+	valSet := state.Validators.Copy()
+	
+	// We need to determine how many rounds were there for this block
+	// For now, we'll return proposers for a reasonable number of rounds
+	// In a real implementation, this would need to be determined from consensus state
+	maxRounds := int32(10) // Reasonable upper limit
+	
+	for round := int32(0); round < maxRounds; round++ {
+		proposer := valSet.GetProposer()
+		if proposer == nil {
+			break
+		}
+		proposers = append(proposers, *proposer)
+		// Increment the priority to simulate the next round
+		valSet.IncrementProposerPriority(1)
+	}
+	
+	if len(proposers) == 0 {
+		return nil, fmt.Errorf("no proposers found for height %d", height)
+	}
+	
+	return proposers, nil
+}

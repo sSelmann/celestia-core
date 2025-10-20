@@ -59,6 +59,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"signed_block":              rpc.NewRPCFunc(env.SignedBlock, "height", rpc.Cacheable("height")),
 		"data_commitment":           rpc.NewRPCFunc(env.DataCommitment, "start,end"),
 		"tx_status":                 rpc.NewRPCFunc(env.TxStatus, "hash"),
+		"get_proposer_by_round":     rpc.NewRPCFunc(env.GetProposerByRound, "height", rpc.Cacheable("height")),
 	}
 }
 
