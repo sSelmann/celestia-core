@@ -143,103 +143,78 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-	// Load the validator set for this height
-	// The validator set from LoadValidators should have the correct proposer priorities
-	// for round 0 of this height
-	validators, err := env.StateStore.LoadValidators(height)
+	// CRITICAL INSIGHT: We cannot trust LoadValidators because it may have already
+	// incremented proposer priorities. Instead, we need to work backwards from the
+	// block header proposer address.
+	
+	// The block header contains the ACTUAL proposer who successfully proposed this block.
+	// This is our ground truth. For round 0, this should be our answer.
+	
+	// Strategy: Since we know the actual proposer from the header, and we know the commit round,
+	// we can work backwards to find all proposers.
+	
+	// Load state to get validators
+	state, err := env.StateStore.Load()
 	if err != nil {
 		return nil, err
 	}
 	
-	// Find which validator in the set has the header proposer address
-	headerProposerFound := false
-	for i, val := range validators.Validators {
-		if val.Address.String() == block.ProposerAddress.String() {
-			env.Logger.Info("Header proposer found in validator set",
-				"height", height,
-				"index", i,
-				"address", val.Address.String(),
-				"priority", val.ProposerPriority,
-				"voting_power", val.VotingPower)
-			headerProposerFound = true
-			break
+	// For this height, we need the validator set that was active
+	// This is stored as state.Validators for the current height
+	validators := state.Validators
+	if state.LastBlockHeight >= height {
+		// If we're querying a past height, load it from store
+		validators, err = env.StateStore.LoadValidators(height)
+		if err != nil {
+			return nil, err
 		}
 	}
 	
-	if !headerProposerFound {
-		env.Logger.Error("Header proposer NOT found in validator set!",
-			"height", height,
-			"header_proposer", block.ProposerAddress.String())
-	}
+	// Now here's the key: The block header proposer address is the ACTUAL proposer
+	// for the round that this block was committed in.
+	// If commit round is 0, then block.ProposerAddress is the round 0 proposer.
+	// If commit round is > 0, we need to work backwards.
 	
-	// Find the proposer using the same algorithm as findProposer()
-	var calculatedProposer *types.Validator
-	for _, val := range validators.Validators {
-		if calculatedProposer == nil {
-			calculatedProposer = val
-		} else {
-			calculatedProposer = calculatedProposer.CompareProposerPriority(val)
-		}
-	}
-	
-	if calculatedProposer != nil {
-		env.Logger.Info("Calculated round 0 proposer",
-			"height", height,
-			"address", calculatedProposer.Address.String(),
-			"priority", calculatedProposer.ProposerPriority,
-			"matches_header", calculatedProposer.Address.String() == block.ProposerAddress.String())
-	}
-
-	// Calculate proposers for each round from 0 to the commit round
-	// This replicates the exact algorithm used in consensus/state.go:enterNewRound
 	var rounds []ctypes.ProposerRoundInfo
 	commitRound := commit.Round
 	
-	// Start with the validator set at round 0
-	valSet := validators.Copy()
-	valSet.Proposer = nil // Reset proposer to force recalculation
-	
-	// Debug: log the initial proposer for round 0
-	initialProposer := valSet.GetProposer()
-	if initialProposer != nil {
-		env.Logger.Debug("Round 0 proposer",
-			"height", height,
-			"proposer", initialProposer.Address.String(),
-			"header_proposer", block.ProposerAddress.String())
-	}
-	
-	for round := int32(0); round <= commitRound; round++ {
-		// For each round, we need to calculate the proposer
-		// This replicates the logic from consensus/state.go:enterNewRound
-		// The key insight is that we simulate the consensus state transitions
-		
-		// Round 0: Use the initial proposer
-		// Round 1+: Increment proposer priority by 1 for each round transition
-		if round > 0 {
-			valSet.IncrementProposerPriority(1)
-		}
-		
-		proposer := valSet.GetProposer()
-		if proposer == nil {
-			break
-		}
-		
+	// For round 0, the proposer should be in the block header
+	// But ONLY if the block was committed in round 0
+	if commitRound == 0 {
+		// Simple case: block was committed in round 0
 		rounds = append(rounds, ctypes.ProposerRoundInfo{
-			Round:           round,
-			ProposerAddress: proposer.Address.String(),
+			Round:           0,
+			ProposerAddress: block.ProposerAddress.String(),
 		})
-	}
-
-	// Verify our calculation by checking if the commit round proposer matches the block header proposer
-	if len(rounds) > 0 && int(commitRound) < len(rounds) {
-		calculatedProposer := rounds[commitRound].ProposerAddress
-		headerProposer := block.ProposerAddress.String()
-		if calculatedProposer != headerProposer {
-			env.Logger.Error("Proposer mismatch",
+	} else {
+		// Complex case: block was committed in round > 0
+		// We need to simulate from round 0 to commitRound
+		valSet := validators.Copy()
+		valSet.Proposer = nil
+		
+		for round := int32(0); round <= commitRound; round++ {
+			if round > 0 {
+				valSet.IncrementProposerPriority(1)
+			}
+			
+			proposer := valSet.GetProposer()
+			if proposer == nil {
+				break
+			}
+			
+			rounds = append(rounds, ctypes.ProposerRoundInfo{
+				Round:           round,
+				ProposerAddress: proposer.Address.String(),
+			})
+		}
+		
+		// Verify: the last round should match the header proposer
+		if len(rounds) > 0 && rounds[len(rounds)-1].ProposerAddress != block.ProposerAddress.String() {
+			env.Logger.Error("Proposer mismatch - our calculation is wrong!",
 				"height", height,
 				"commit_round", commitRound,
-				"calculated_proposer", calculatedProposer,
-				"header_proposer", headerProposer)
+				"calculated", rounds[len(rounds)-1].ProposerAddress,
+				"header", block.ProposerAddress.String())
 		}
 	}
 
