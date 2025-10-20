@@ -148,22 +148,21 @@ func (env *Environment) GetProposerByRound(
 	var rounds []ctypes.ProposerRoundInfo
 	commitRound := commit.Round
 	
+	// Start with the validator set at round 0
+	valSet := validators.Copy()
+	
 	for round := int32(0); round <= commitRound; round++ {
 		// For each round, we need to calculate the proposer
 		// This replicates the logic from consensus/state.go:enterNewRound
-		// The key insight is that we need to simulate what happens when we enter each round
-		// from the perspective of round 0
+		// The key insight is that we simulate the consensus state transitions
 		
-		// Create a fresh copy for this round calculation
-		roundValSet := validators.Copy()
-		
-		// If this is not round 0, increment proposer priority by the round number
-		// This simulates what happens in enterNewRound when cs.rs.Round < round
+		// Round 0: Use the initial proposer
+		// Round 1+: Increment proposer priority by 1 for each round transition
 		if round > 0 {
-			roundValSet.IncrementProposerPriority(round)
+			valSet.IncrementProposerPriority(1)
 		}
 		
-		proposer := roundValSet.GetProposer()
+		proposer := valSet.GetProposer()
 		if proposer == nil {
 			break
 		}
