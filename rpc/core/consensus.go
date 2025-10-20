@@ -120,8 +120,8 @@ func (env *Environment) ConsensusParams(
 }
 
 // GetProposerByRound returns the proposers for each round in a given block height.
-// This function helps identify which validators were assigned as proposers in each round,
-// including those who failed to propose successfully.
+// This function replicates the exact consensus algorithm used during block production
+// to determine which validators were assigned as proposers in each round.
 func (env *Environment) GetProposerByRound(
 	_ *rpctypes.Context,
 	heightPtr *int64,
@@ -144,13 +144,23 @@ func (env *Environment) GetProposerByRound(
 	}
 
 	// Calculate proposers for each round from 0 to the commit round
+	// This replicates the exact algorithm used in consensus/state.go:enterNewRound
 	var rounds []ctypes.ProposerRoundInfo
 	commitRound := commit.Round
 	
-	// Create a copy of validator set to calculate proposers
+	// Start with the validator set at round 0
+	// We need to simulate the exact same proposer selection as consensus
 	valSet := validators.Copy()
 	
 	for round := int32(0); round <= commitRound; round++ {
+		// For each round, we need to calculate the proposer
+		// This replicates the logic from consensus/state.go:enterNewRound
+		if round > 0 {
+			// Increment proposer priority for the round difference
+			// This is exactly what consensus does: validators.IncrementProposerPriority(round - previousRound)
+			valSet.IncrementProposerPriority(1)
+		}
+		
 		proposer := valSet.GetProposer()
 		if proposer == nil {
 			break
@@ -160,9 +170,6 @@ func (env *Environment) GetProposerByRound(
 			Round:           round,
 			ProposerAddress: proposer.Address.String(),
 		})
-		
-		// Move to next round by incrementing proposer priority
-		valSet.IncrementProposerPriority(1)
 	}
 
 	return &ctypes.ResultProposerByRound{
