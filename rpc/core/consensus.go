@@ -1,6 +1,8 @@
 package core
 
 import (
+	"fmt"
+	
 	cm "github.com/cometbft/cometbft/consensus"
 	cmtmath "github.com/cometbft/cometbft/libs/math"
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
@@ -129,21 +131,48 @@ func (env *Environment) GetProposerByRound(
 		return nil, err
 	}
 
-	// Load the state for the given height
+	// Load the commit for this height to get the actual round information
+	commit := env.BlockStore.LoadSeenCommit(height)
+	if commit == nil {
+		return nil, fmt.Errorf("no commit found for height %d", height)
+	}
+
+	// Load the state for the given height to get validator set
 	state, err := env.StateStore.Load()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get proposers for each round
-	proposers, err := state.GetProposerByRound(height)
+	// Get the validator set for this height
+	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
 
+	// Calculate proposers for each round from 0 to the commit round
+	var rounds []ctypes.ProposerRoundInfo
+	commitRound := commit.Round
+	
+	// Create a copy of validator set to calculate proposers
+	valSet := validators.Copy()
+	
+	for round := int32(0); round <= commitRound; round++ {
+		proposer := valSet.GetProposer()
+		if proposer == nil {
+			break
+		}
+		
+		rounds = append(rounds, ctypes.ProposerRoundInfo{
+			Round:           round,
+			ProposerAddress: proposer.Address.String(),
+		})
+		
+		// Move to next round by incrementing proposer priority
+		valSet.IncrementProposerPriority(1)
+	}
+
 	return &ctypes.ResultProposerByRound{
-		BlockHeight: height,
-		Proposers:   proposers,
-		Count:       len(proposers),
+		Height: fmt.Sprintf("%d", height),
+		Rounds: rounds,
 	}, nil
 }
