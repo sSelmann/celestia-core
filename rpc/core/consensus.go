@@ -153,22 +153,23 @@ func (env *Environment) GetProposerByRound(
 	// Strategy: Since we know the actual proposer from the header, and we know the commit round,
 	// we can work backwards to find all proposers.
 	
-	// Load state to get validators
-	state, err := env.StateStore.Load()
+	// Always load the validator set for the requested height from storage
+	// This ensures we get the correct validator set regardless of current state
+	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
 	
-	// For this height, we need the validator set that was active
-	// This is stored as state.Validators for the current height
-	validators := state.Validators
-	if state.LastBlockHeight >= height {
-		// If we're querying a past height, load it from store
-		validators, err = env.StateStore.LoadValidators(height)
-		if err != nil {
-			return nil, err
-		}
-	}
+	env.Logger.Info("Loaded validator set",
+		"height", height,
+		"num_validators", len(validators.Validators),
+		"proposer_set", validators.Proposer != nil,
+		"proposer_addr", func() string {
+			if validators.Proposer != nil {
+				return validators.Proposer.Address.String()
+			}
+			return "nil"
+		}())
 	
 	// Now here's the key: The block header proposer address is the ACTUAL proposer
 	// for the round that this block was committed in.
