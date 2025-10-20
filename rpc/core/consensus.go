@@ -137,12 +137,6 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-	// Load the state for the given height to get validator set
-	state, err := env.StateStore.Load()
-	if err != nil {
-		return nil, err
-	}
-
 	// Get the validator set for this height
 	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
