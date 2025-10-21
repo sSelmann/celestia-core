@@ -166,32 +166,26 @@ func (env *Environment) GetProposerByRound(
         }
     }
 
-    // Round 0 başlangıcı: seçilen set ile ilerle
-    valSet := pick.Copy()
-
+    // Her round için consensus'un yaptığı gibi tek çağrıda (times=round) artırma yaparak
+    // proposer'ı hesapla: enterNewRound() -> IncrementProposerPriority(round-currRound)
     commitRound := commit.Round
     var rounds []ctypes.ProposerRoundInfo
 
+	// Create a copy of the validator set to simulate proposer selection
+	valSetCopy := pick.Copy()
+
     for round := int32(0); round <= commitRound; round++ {
-        if round > 0 {
-            // Her round geçişinde priority'leri bir kez artır; IncrementProposerPriority
-            // seçilen proposer'ı vals.Proposer'a yazar (mostest)
-            valSet.IncrementProposerPriority(1)
-        }
+		proposer := valSetCopy.GetProposer()
+		rounds = append(rounds, ctypes.ProposerRoundInfo{
+			Address:        proposer.Address.String(),
+			ProposerPriority: proposer.ProposerPriority,
+		})
+		valSetCopy.IncrementProposerPriority(1)
+	}
 
-        proposer := valSet.GetProposer()
-        if proposer == nil {
-            break
-        }
-
-        rounds = append(rounds, ctypes.ProposerRoundInfo{
-            Round:           round,
-            ProposerAddress: proposer.Address.String(),
-        })
-    }
-
-	return &ctypes.ResultProposerByRound{
-		Height: fmt.Sprintf("%d", height),
-		Rounds: rounds,
-	}, nil
+    return &ctypes.ResultProposerByRound{
+        BlockProposer:     block.ProposerAddress.String(),
+        CommitRound:       commitRound,
+        ProposerPerRound:  rounds,
+    }, nil
 }

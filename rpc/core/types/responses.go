@@ -156,14 +156,15 @@ type ResultConsensusParams struct {
 
 // Proposers for each round in a given block height
 type ResultProposerByRound struct {
-	Height string                    `json:"height"`
-	Rounds []ProposerRoundInfo       `json:"rounds"`
+	BlockProposer    string              `json:"block_proposer"`
+	CommitRound      int32               `json:"commit_round"`
+	ProposerPerRound []ProposerRoundInfo `json:"proposer_per_round"`
 }
 
 // ProposerRoundInfo contains proposer information for a specific round
 type ProposerRoundInfo struct {
-	Round           int32  `json:"round"`
-	ProposerAddress string `json:"proposer_address"`
+	Address          string `json:"address"`
+	ProposerPriority int64  `json:"proposer_priority"`
 }
 
 // Info about the consensus state.
