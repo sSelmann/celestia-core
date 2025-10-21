@@ -291,6 +291,6 @@ type ResultShareProof struct {
 }
 
 type ResultProposers struct {
-	Height    int64           `json:"height"`
-	Proposers map[int32]string `json:"proposers"`
+	Height    int64             `json:"height"`
+	Proposers map[string]string `json:"proposers"`
 }

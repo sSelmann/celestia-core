@@ -138,12 +138,12 @@ func (env *Environment) ProposersForRounds(
 		return nil, err
 	}
 
-	proposers := make(map[int32]string)
+	proposers := make(map[string]string)
 	for r := startRound; r <= endRound; r++ {
 		vs := validators.Copy()
 		vs.IncrementProposerPriority(r + 1)
 		prop := vs.GetProposer()
-		proposers[r] = fmt.Sprintf("%X", prop.Address)
+		proposers[fmt.Sprintf("%d", r)] = fmt.Sprintf("%X", prop.Address)
 	}
 
 	return &ctypes.ResultProposers{
