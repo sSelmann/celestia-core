@@ -6,7 +6,6 @@ import (
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	"github.com/cometbft/cometbft/types"
-	"fmt"
 )
 
 // Validators gets the validator set at the given block height.
@@ -115,63 +114,5 @@ func (env *Environment) ConsensusParams(
 	return &ctypes.ResultConsensusParams{
 		BlockHeight:     height,
 		ConsensusParams: consensusParams,
-	}, nil
-}
-
-// ProposersForRounds gets the proposers for rounds up to the commit round at a specific height.
-func (env *Environment) ProposersForRounds(
-	_ *rpctypes.Context,
-	heightPtr *int64,
-) (*ctypes.ResultProposers, error) {
-	height, err := env.getHeight(env.latestUncommittedHeight(), heightPtr)
-	if err != nil {
-		return nil, err
-	}
-
-	commit := env.BlockStore.LoadBlockCommit(height)
-	if commit == nil {
-		return nil, fmt.Errorf("no commit found for height %d", height)
-	}
-
-	state, err := env.StateStore.Load(height)
-	if err != nil {
-		return nil, err
-	}
-	lastChange := state.LastHeightValidatorsChanged
-	if lastChange > height {
-		return nil, fmt.Errorf("last validator change %d after height %d", lastChange, height)
-	}
-	if height - lastChange > 10000 {
-		return nil, fmt.Errorf("too many heights (%d) to compute exact proposers, approximate not supported", height - lastChange)
-	}
-
-	validators, err := env.StateStore.LoadValidators(lastChange)
-	if err != nil {
-		return nil, err
-	}
-
-	totalRounds := int64(0)
-	for k := lastChange; k < height; k++ {
-		c := env.BlockStore.LoadBlockCommit(k)
-		if c == nil {
-			return nil, fmt.Errorf("no commit for intermediate height %d", k)
-		}
-		totalRounds += int64(c.Round) + 1
-	}
-
-	validators.IncrementProposerPriority(totalRounds)
-
-	proposers := make(map[string]string)
-	endRound := commit.Round
-	for r := int32(0); r <= endRound; r++ {
-		vs := validators.Copy()
-		vs.IncrementProposerPriority(r)
-		prop := vs.GetProposer()
-		proposers[fmt.Sprintf("%d", r)] = fmt.Sprintf("%X", prop.Address)
-	}
-
-	return &ctypes.ResultProposers{
-		Height:    height,
-		Proposers: proposers,
 	}, nil
 }
