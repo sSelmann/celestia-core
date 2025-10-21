@@ -2,6 +2,7 @@ package core
 
 import (
     "fmt"
+    "bytes"
     
     cm "github.com/cometbft/cometbft/consensus"
     cmtmath "github.com/cometbft/cometbft/libs/math"
