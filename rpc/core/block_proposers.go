@@ -70,8 +70,7 @@ func (env *Environment) BlockProposers(
 	// Load the validator set for the PREVIOUS height to get the base state
 	// This is because LoadValidators(height) already increments for the current height
 	var baseValidatorSet *types.ValidatorSet
-	var err error
-	
+		
 	if height == 1 {
 		// For height 1, use the validator set from height 1 itself
 		baseValidatorSet = validatorSet
