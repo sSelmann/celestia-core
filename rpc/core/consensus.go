@@ -143,138 +143,38 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-	// CRITICAL INSIGHT: We cannot trust LoadValidators because it may have already
-	// incremented proposer priorities. Instead, we need to work backwards from the
-	// block header proposer address.
-	
-	// The block header contains the ACTUAL proposer who successfully proposed this block.
-	// This is our ground truth. For round 0, this should be our answer.
-	
-	// Strategy: Since we know the actual proposer from the header, and we know the commit round,
-	// we can work backwards to find all proposers.
-	
-	// CRITICAL FIX: We need to understand how validator sets transition between heights
-	// In updateState (state/execution.go):
-	//   - state.NextValidators is incremented
-	//   - NewState.Validators = OldState.NextValidators.Copy() (BEFORE increment)
-	//   - NewState.NextValidators = incremented version
-	// 
-	// So for height H:
-	//   - LoadValidators(H) returns what was state.NextValidators at height H-1
-	//   - But state.NextValidators at H-1 was already incremented once during H-1's updateState
-	//   - Then it was saved for height H
-	//   - When we load it for height H, we get a validator set that's been incremented
-	//
-	// To get the CORRECT round 0 validator set for height H:
-	//   - We need the validator set BEFORE it was incremented for height H
-	//   - This is LoadValidators(H-1) + IncrementProposerPriority(1)
-	//   - OR we can decrement LoadValidators(H)... but there's no decrement function
-	//
-	// Actually, let's re-read the code more carefully...
-	
-	// THE REAL FIX: Load from previous height and increment!
-	// Based on updateState in state/execution.go:
-	//   NewState.Validators = OldState.NextValidators.Copy()
-	// 
-	// So LoadValidators(height) returns OldState.NextValidators
-	// But we need it BEFORE increment for round 0
-	// Solution: Load from height-1 which gives us OldState.Validators
-	// Then increment once to get to current height's round 0
-	
-	var validators *types.ValidatorSet
-	if height == 1 {
-		// Genesis height, load directly
-		validators, err = env.StateStore.LoadValidators(height)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		// Load from previous height
-		prevValidators, err := env.StateStore.LoadValidators(height - 1)
-		if err != nil {
-			return nil, err
-		}
-		// Increment once to get to current height's round 0
-		// This replicates what updateState does
-		validators = prevValidators.CopyIncrementProposerPriority(1)
-	}
-	
-	env.Logger.Info("DEBUG Validators for round 0",
-		"height", height,
-		"calculated_proposer", validators.GetProposer().Address.String(),
-		"header_proposer", block.ProposerAddress.String(),
-		"commit_round", commit.Round)
-	
-	// CRITICAL INSIGHT: LoadValidators already gives us the correct validator set
-	// for round 0 of this height, with priorities properly calculated.
-	// For subsequent rounds, we must increment SEQUENTIALLY, not in bulk.
-	// This is because IncrementProposerPriority has side effects (rescaling, etc.)
-	
-	var rounds []ctypes.ProposerRoundInfo
-	commitRound := commit.Round
-	
-	// Special case: if commit round is 0, we can use header directly
-	if commitRound == 0 {
-		rounds = append(rounds, ctypes.ProposerRoundInfo{
-			Round:           0,
-			ProposerAddress: block.ProposerAddress.String(),
-		})
-	} else {
-		// For round > 0, we need to simulate the consensus process
-		// DON'T use Copy() - it may not preserve priorities correctly
-		// Instead, use the validator set directly and track proposers
-		
-		// Round 0: Use the proposer from the validator set we calculated
-		round0Proposer := validators.GetProposer()
-		if round0Proposer == nil {
-			return nil, fmt.Errorf("no proposer found for round 0 at height %d", height)
-		}
-		
-		env.Logger.Info("Round 0 proposer from validators",
-			"proposer", round0Proposer.Address.String())
-		
-		rounds = append(rounds, ctypes.ProposerRoundInfo{
-			Round:           0,
-			ProposerAddress: round0Proposer.Address.String(),
-		})
-		
-		// For subsequent rounds, we need to increment
-		// Create a working copy for incrementing
-		workingSet := validators.Copy()
-		
-		for round := int32(1); round <= commitRound; round++ {
-			// Increment for this round
-			workingSet.IncrementProposerPriority(1)
-			
-			proposer := workingSet.GetProposer()
-			if proposer == nil {
-				break
-			}
-			
-			env.Logger.Info("Round proposer calculated",
-				"round", round,
-				"proposer", proposer.Address.String())
-			
-			rounds = append(rounds, ctypes.ProposerRoundInfo{
-				Round:           round,
-				ProposerAddress: proposer.Address.String(),
-			})
-		}
-		
-		// Verify: the commit round proposer should match the header
-		if len(rounds) > int(commitRound) && rounds[commitRound].ProposerAddress != block.ProposerAddress.String() {
-			env.Logger.Error("PROPOSER MISMATCH",
-				"height", height,
-				"commit_round", commitRound,
-				"calculated", rounds[commitRound].ProposerAddress,
-				"header", block.ProposerAddress.String(),
-				"all_rounds", rounds)
-			
-			// This should NEVER happen if our logic is correct
-			return nil, fmt.Errorf("proposer calculation mismatch at height %d round %d: got %s, expected %s",
-				height, commitRound, rounds[commitRound].ProposerAddress, block.ProposerAddress.String())
-		}
-	}
+    // Load validators for this height
+    validators, err := env.StateStore.LoadValidators(height)
+    if err != nil {
+        return nil, err
+    }
+
+    // Deterministik simülasyon: proposer cache'i kullanmadan priority'lerden hesapla
+    // Round 0 başlangıcı: Proposer'ı sıfırla ve yeniden hesapla
+    valSet := validators.Copy()
+    valSet.Proposer = nil
+
+    commitRound := commit.Round
+    var rounds []ctypes.ProposerRoundInfo
+
+    for round := int32(0); round <= commitRound; round++ {
+        if round > 0 {
+            // Her round geçişinde priority'leri bir kez artır
+            valSet.IncrementProposerPriority(1)
+            // Cache'lenmiş proposer'ı temizle; bir sonraki round için yeniden hesaplansın
+            valSet.Proposer = nil
+        }
+
+        proposer := valSet.GetProposer()
+        if proposer == nil {
+            break
+        }
+
+        rounds = append(rounds, ctypes.ProposerRoundInfo{
+            Round:           round,
+            ProposerAddress: proposer.Address.String(),
+        })
+    }
 
 	return &ctypes.ResultProposerByRound{
 		Height: fmt.Sprintf("%d", height),
