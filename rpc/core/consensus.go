@@ -6,6 +6,7 @@ import (
 	ctypes "github.com/cometbft/cometbft/rpc/core/types"
 	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
 	"github.com/cometbft/cometbft/types"
+	"fmt"
 )
 
 // Validators gets the validator set at the given block height.
@@ -114,5 +115,35 @@ func (env *Environment) ConsensusParams(
 	return &ctypes.ResultConsensusParams{
 		BlockHeight:     height,
 		ConsensusParams: consensusParams,
+	}, nil
+}
+
+// ProposersForRounds gets the proposers for given rounds at a specific height.
+func (env *Environment) ProposersForRounds(
+	_ *rpctypes.Context,
+	heightPtr *int64,
+	startRound, endRound int32,
+) (*ctypes.ResultProposers, error) {
+	height, err := env.getHeight(env.latestUncommittedHeight(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	validators, err := env.StateStore.LoadValidators(height)
+	if err != nil {
+		return nil, err
+	}
+
+	proposers := make(map[int32]string)
+	for r := startRound; r <= endRound; r++ {
+		vs := validators.Copy()
+		vs.IncrementProposerPriority(r)
+		prop := vs.GetProposer()
+		proposers[r] = fmt.Sprintf("%X", prop.Address)
+	}
+
+	return &ctypes.ResultProposers{
+		Height:    height,
+		Proposers: proposers,
 	}, nil
 }

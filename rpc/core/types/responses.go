@@ -289,3 +289,8 @@ type ResultDataRootInclusionProof struct {
 type ResultShareProof struct {
 	ShareProof types.ShareProof `json:"share_proof"`
 }
+
+type ResultProposers struct {
+	Height    int64           `json:"height"`
+	Proposers map[int32]string `json:"proposers"`
+}
