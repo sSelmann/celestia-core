@@ -129,6 +129,10 @@ func (env *Environment) ProposersForRounds(
 		return nil, err
 	}
 
+	if startRound > endRound || startRound < 0 {
+		return nil, fmt.Errorf("invalid round range: start %d, end %d", startRound, endRound)
+	}
+
 	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
@@ -137,7 +141,7 @@ func (env *Environment) ProposersForRounds(
 	proposers := make(map[int32]string)
 	for r := startRound; r <= endRound; r++ {
 		vs := validators.Copy()
-		vs.IncrementProposerPriority(r)
+		vs.IncrementProposerPriority(r + 1)
 		prop := vs.GetProposer()
 		proposers[r] = fmt.Sprintf("%X", prop.Address)
 	}
