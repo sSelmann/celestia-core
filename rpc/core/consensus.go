@@ -143,16 +143,30 @@ func (env *Environment) GetProposerByRound(
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
 
-    // Load validators for this height
+    // Doğru başlangıç validator setini seç: header.ValidatorsHash ile eşleşeni kullan
     validators, err := env.StateStore.LoadValidators(height)
     if err != nil {
         return nil, err
     }
+    pick := validators
+    if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
+        if height > 1 {
+            if prev, err := env.StateStore.LoadValidators(height - 1); err == nil && bytes.Equal(prev.Hash(), block.ValidatorsHash) {
+                pick = prev
+            }
+        }
+        if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
+            if next, err := env.StateStore.LoadValidators(height + 1); err == nil && bytes.Equal(next.Hash(), block.ValidatorsHash) {
+                pick = next
+            }
+        }
+        if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
+            return nil, fmt.Errorf("validator set hash mismatch at height %d", height)
+        }
+    }
 
-    // Deterministik simülasyon: proposer cache'i kullanmadan priority'lerden hesapla
-    // Round 0 başlangıcı: Proposer'ı sıfırla ve yeniden hesapla
-    // Round 0 başlangıcı: mevcut proposer cache'ini kullan; konsensus da bu şekilde başlıyor
-    valSet := validators.Copy()
+    // Round 0 başlangıcı: seçilen set ile ilerle
+    valSet := pick.Copy()
 
     commitRound := commit.Round
     var rounds []ctypes.ProposerRoundInfo
