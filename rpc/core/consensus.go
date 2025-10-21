@@ -153,13 +153,47 @@ func (env *Environment) GetProposerByRound(
 	// Strategy: Since we know the actual proposer from the header, and we know the commit round,
 	// we can work backwards to find all proposers.
 	
-	// Load the validator set for this height
-	// LoadValidators returns the validator set with correct proposer priorities
-	// for round 0 of this height
+	// CRITICAL FIX: We need to understand how validator sets transition between heights
+	// In updateState (state/execution.go):
+	//   - state.NextValidators is incremented
+	//   - NewState.Validators = OldState.NextValidators.Copy() (BEFORE increment)
+	//   - NewState.NextValidators = incremented version
+	// 
+	// So for height H:
+	//   - LoadValidators(H) returns what was state.NextValidators at height H-1
+	//   - But state.NextValidators at H-1 was already incremented once during H-1's updateState
+	//   - Then it was saved for height H
+	//   - When we load it for height H, we get a validator set that's been incremented
+	//
+	// To get the CORRECT round 0 validator set for height H:
+	//   - We need the validator set BEFORE it was incremented for height H
+	//   - This is LoadValidators(H-1) + IncrementProposerPriority(1)
+	//   - OR we can decrement LoadValidators(H)... but there's no decrement function
+	//
+	// Actually, let's re-read the code more carefully...
+	
+	// Load validators for this height
 	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
+	
+	// DEBUG: Let's check if this validator set's proposer matches what we expect
+	env.Logger.Info("DEBUG LoadValidators",
+		"height", height,
+		"proposer", func() string {
+			if validators.Proposer != nil {
+				return validators.Proposer.Address.String()
+			}
+			// Force calculation if nil
+			p := validators.GetProposer()
+			if p != nil {
+				return p.Address.String()
+			}
+			return "nil"
+		}(),
+		"header_proposer", block.ProposerAddress.String(),
+		"commit_round", commit.Round)
 	
 	// CRITICAL INSIGHT: LoadValidators already gives us the correct validator set
 	// for round 0 of this height, with priorities properly calculated.
