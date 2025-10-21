@@ -172,26 +172,36 @@ func (env *Environment) GetProposerByRound(
 	//
 	// Actually, let's re-read the code more carefully...
 	
-	// Load validators for this height
-	validators, err := env.StateStore.LoadValidators(height)
-	if err != nil {
-		return nil, err
+	// THE REAL FIX: Load from previous height and increment!
+	// Based on updateState in state/execution.go:
+	//   NewState.Validators = OldState.NextValidators.Copy()
+	// 
+	// So LoadValidators(height) returns OldState.NextValidators
+	// But we need it BEFORE increment for round 0
+	// Solution: Load from height-1 which gives us OldState.Validators
+	// Then increment once to get to current height's round 0
+	
+	var validators *types.ValidatorSet
+	if height == 1 {
+		// Genesis height, load directly
+		validators, err = env.StateStore.LoadValidators(height)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Load from previous height
+		prevValidators, err := env.StateStore.LoadValidators(height - 1)
+		if err != nil {
+			return nil, err
+		}
+		// Increment once to get to current height's round 0
+		// This replicates what updateState does
+		validators = prevValidators.CopyIncrementProposerPriority(1)
 	}
 	
-	// DEBUG: Let's check if this validator set's proposer matches what we expect
-	env.Logger.Info("DEBUG LoadValidators",
+	env.Logger.Info("DEBUG Validators for round 0",
 		"height", height,
-		"proposer", func() string {
-			if validators.Proposer != nil {
-				return validators.Proposer.Address.String()
-			}
-			// Force calculation if nil
-			p := validators.GetProposer()
-			if p != nil {
-				return p.Address.String()
-			}
-			return "nil"
-		}(),
+		"calculated_proposer", validators.GetProposer().Address.String(),
 		"header_proposer", block.ProposerAddress.String(),
 		"commit_round", commit.Round)
 	
