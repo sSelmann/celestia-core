@@ -1,13 +1,14 @@
 package core
 
 import (
-	"fmt"
-	
-	cm "github.com/cometbft/cometbft/consensus"
-	cmtmath "github.com/cometbft/cometbft/libs/math"
-	ctypes "github.com/cometbft/cometbft/rpc/core/types"
-	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
-	"github.com/cometbft/cometbft/types"
+    "bytes"
+    "fmt"
+    
+    cm "github.com/cometbft/cometbft/consensus"
+    cmtmath "github.com/cometbft/cometbft/libs/math"
+    ctypes "github.com/cometbft/cometbft/rpc/core/types"
+    rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
+    "github.com/cometbft/cometbft/types"
 )
 
 // Validators gets the validator set at the given block height.
@@ -151,8 +152,32 @@ func (env *Environment) GetProposerByRound(
 
     // Deterministik simülasyon: proposer cache'i kullanmadan priority'lerden hesapla
     // Round 0 başlangıcı: Proposer'ı sıfırla ve yeniden hesapla
+    // Round 0 deterministik başlangıç: proposer cache'ini temizle ve priority'lerden hesapla
+    // NOT: ValidatorSetFromProto yüklerken Proposer alanı "previous proposer" olabilir.
+    // Bu nedenle cache'i temizleyip priority karşılaştırması ile seçmek gerekir.
     valSet := validators.Copy()
     valSet.Proposer = nil
+    // findProposer eşdeğeri: highest priority (tie -> lower address)
+    {
+        var chosen *types.Validator
+        for _, v := range valSet.Validators {
+            if chosen == nil {
+                chosen = v
+                continue
+            }
+            switch {
+            case v.ProposerPriority > chosen.ProposerPriority:
+                chosen = v
+            case v.ProposerPriority < chosen.ProposerPriority:
+                // keep
+            default:
+                if bytes.Compare(v.Address, chosen.Address) < 0 {
+                    chosen = v
+                }
+            }
+        }
+        valSet.Proposer = chosen
+    }
 
     commitRound := commit.Round
     var rounds []ctypes.ProposerRoundInfo
@@ -163,9 +188,28 @@ func (env *Environment) GetProposerByRound(
             valSet.IncrementProposerPriority(1)
             // Cache'lenmiş proposer'ı temizle; bir sonraki round için yeniden hesaplansın
             valSet.Proposer = nil
+            // findProposer eşdeğeriyle seç (cache'e yaz)
+            var chosen *types.Validator
+            for _, v := range valSet.Validators {
+                if chosen == nil {
+                    chosen = v
+                    continue
+                }
+                switch {
+                case v.ProposerPriority > chosen.ProposerPriority:
+                    chosen = v
+                case v.ProposerPriority < chosen.ProposerPriority:
+                    // keep
+                default:
+                    if bytes.Compare(v.Address, chosen.Address) < 0 {
+                        chosen = v
+                    }
+                }
+            }
+            valSet.Proposer = chosen
         }
 
-        proposer := valSet.GetProposer()
+        proposer := valSet.Proposer
         if proposer == nil {
             break
         }
