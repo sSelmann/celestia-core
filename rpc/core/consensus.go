@@ -154,65 +154,38 @@ func (env *Environment) GetProposerByRound(
 	// we can work backwards to find all proposers.
 	
 	// Load the validator set for this height
-	loadedVals, err := env.StateStore.LoadValidators(height)
+	// LoadValidators returns the validator set with correct proposer priorities
+	// for round 0 of this height
+	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
 		return nil, err
 	}
 	
-	// CRITICAL FIX: LoadValidators returns a validator set with proposer priorities
-	// that may have been incremented from a checkpoint. We need to create a FRESH
-	// validator set with priorities calculated from scratch for THIS height.
-	
-	// Create a new validator set from the validator list, which will initialize
-	// priorities correctly. But NewValidatorSet adds IncrementProposerPriority(1),
-	// so we need to compensate for that.
-	
-	// Copy the validator list (addresses and voting powers)
-	valList := make([]*types.Validator, len(loadedVals.Validators))
-	for i, val := range loadedVals.Validators {
-		valList[i] = &types.Validator{
-			Address:          val.Address,
-			PubKey:           val.PubKey,
-			VotingPower:      val.VotingPower,
-			ProposerPriority: 0, // Start with zero priority
-		}
-	}
-	
-	// Now we have a validator set with consistent, predictable priorities
-	// We need to increment it to match the current height
-	// The formula is: increment by (height - genesisHeight - 1) because NewValidatorSet already did +1
-	
-	// But wait - this is getting too complex. Let's use a simpler approach:
-	// Since commit round > 0 cases are failing, let's use the block header as ground truth
+	// CRITICAL INSIGHT: LoadValidators already gives us the correct validator set
+	// for round 0 of this height, with priorities properly calculated.
+	// For subsequent rounds, we must increment SEQUENTIALLY, not in bulk.
+	// This is because IncrementProposerPriority has side effects (rescaling, etc.)
 	
 	var rounds []ctypes.ProposerRoundInfo
 	commitRound := commit.Round
 	
-	// For ANY commit round, the header contains the actual proposer
-	// So we can use that as our answer for the commit round
-	// For other rounds, we simulate
-	
+	// Special case: if commit round is 0, we can use header directly
 	if commitRound == 0 {
-		// Simple case: block was committed in round 0
-		// Header proposer IS the round 0 proposer
 		rounds = append(rounds, ctypes.ProposerRoundInfo{
 			Round:           0,
 			ProposerAddress: block.ProposerAddress.String(),
 		})
 	} else {
-		// Complex case: For round > 0, we need to calculate all rounds
-		// But our calculation keeps failing, so let's try a different approach:
-		// Use the commit signatures to understand the validator set state
+		// For round > 0, we need to simulate the consensus process
+		// Start with the validator set at round 0
+		valSet := validators.Copy()
 		
-		// Actually, let's just directly use LoadValidators and see what proposer it gives
-		valSet := loadedVals.Copy()
-		valSet.Proposer = nil // Force recalculation
+		// Clear the proposer so GetProposer() recalculates it
+		valSet.Proposer = nil
 		
+		// For each round from 0 to commitRound, calculate the proposer
 		for round := int32(0); round <= commitRound; round++ {
-			if round > 0 {
-				valSet.IncrementProposerPriority(1)
-			}
-			
+			// Get the proposer for this round
 			proposer := valSet.GetProposer()
 			if proposer == nil {
 				break
@@ -222,28 +195,25 @@ func (env *Environment) GetProposerByRound(
 				Round:           round,
 				ProposerAddress: proposer.Address.String(),
 			})
+			
+			// Increment for the next round (don't increment after the last round)
+			if round < commitRound {
+				valSet.IncrementProposerPriority(1)
+			}
 		}
 		
-		// If our calculation doesn't match the header, log detailed info
-		if len(rounds) > 0 && rounds[len(rounds)-1].ProposerAddress != block.ProposerAddress.String() {
-			env.Logger.Error("PROPOSER MISMATCH - Detailed debug info",
+		// Verify: the commit round proposer should match the header
+		if len(rounds) > int(commitRound) && rounds[commitRound].ProposerAddress != block.ProposerAddress.String() {
+			env.Logger.Error("PROPOSER MISMATCH",
 				"height", height,
 				"commit_round", commitRound,
-				"calculated_round_0", rounds[0].ProposerAddress,
-				"calculated_commit_round", rounds[len(rounds)-1].ProposerAddress,
-				"actual_header_proposer", block.ProposerAddress.String(),
-				"loaded_proposer", func() string {
-					if loadedVals.Proposer != nil {
-						return loadedVals.Proposer.Address.String()
-					}
-					return "nil"
-				}())
+				"calculated", rounds[commitRound].ProposerAddress,
+				"header", block.ProposerAddress.String(),
+				"all_rounds", rounds)
 			
-			// For now, force the commit round to be correct by using header
-			rounds[commitRound] = ctypes.ProposerRoundInfo{
-				Round:           commitRound,
-				ProposerAddress: block.ProposerAddress.String(),
-			}
+			// This should NEVER happen if our logic is correct
+			return nil, fmt.Errorf("proposer calculation mismatch at height %d round %d: got %s, expected %s",
+				height, commitRound, rounds[commitRound].ProposerAddress, block.ProposerAddress.String())
 		}
 	}
 
