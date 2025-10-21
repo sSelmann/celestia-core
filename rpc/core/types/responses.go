@@ -154,20 +154,6 @@ type ResultConsensusParams struct {
 	ConsensusParams types.ConsensusParams `json:"consensus_params"`
 }
 
-// Proposers for each round in a given block height
-type ResultProposerByRound struct {
-	BlockProposer    string              `json:"block_proposer"`
-	CommitRound      int32               `json:"commit_round"`
-	ProposerPerRound []ProposerRoundInfo `json:"proposer_per_round"`
-}
-
-// ProposerRoundInfo contains proposer information for a specific round
-type ProposerRoundInfo struct {
-	Round            int32  `json:"round"`
-	Address          string `json:"address"`
-	ProposerPriority int64  `json:"proposer_priority"`
-}
-
 // Info about the consensus state.
 // UNSTABLE
 type ResultDumpConsensusState struct {
@@ -286,6 +272,9 @@ type ResultTxStatus struct {
 	ExecutionCode uint32 `json:"execution_code"`
 	Error         string `json:"error"`
 	Status        string `json:"status"`
+	Codespace     string `json:"codespace,omitempty"`
+	GasWanted     int64  `json:"gas_wanted,omitempty"`
+	GasUsed       int64  `json:"gas_used,omitempty"`
 }
 
 type ResultDataCommitment struct {

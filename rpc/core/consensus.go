@@ -1,14 +1,11 @@
 package core
 
 import (
-    "fmt"
-    "bytes"
-    
-    cm "github.com/cometbft/cometbft/consensus"
-    cmtmath "github.com/cometbft/cometbft/libs/math"
-    ctypes "github.com/cometbft/cometbft/rpc/core/types"
-    rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
-    "github.com/cometbft/cometbft/types"
+	cm "github.com/cometbft/cometbft/consensus"
+	cmtmath "github.com/cometbft/cometbft/libs/math"
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	rpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
+	"github.com/cometbft/cometbft/types"
 )
 
 // Validators gets the validator set at the given block height.
@@ -118,75 +115,4 @@ func (env *Environment) ConsensusParams(
 		BlockHeight:     height,
 		ConsensusParams: consensusParams,
 	}, nil
-}
-
-// GetProposerByRound returns the proposers for each round in a given block height.
-// This function replicates the exact consensus algorithm used during block production
-// to determine which validators were assigned as proposers in each round.
-func (env *Environment) GetProposerByRound(
-	_ *rpctypes.Context,
-	heightPtr *int64,
-) (*ctypes.ResultProposerByRound, error) {
-	height, err := env.getHeight(env.latestUncommittedHeight(), heightPtr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Load the block to get the header proposer address
-	block := env.BlockStore.LoadBlock(height)
-	if block == nil {
-		return nil, fmt.Errorf("no block found for height %d", height)
-	}
-
-	// Load the commit for this height to get the actual round information
-	commit := env.BlockStore.LoadSeenCommit(height)
-	if commit == nil {
-		return nil, fmt.Errorf("no commit found for height %d", height)
-	}
-
-    // Doğru başlangıç validator setini seç: header.ValidatorsHash ile eşleşeni kullan
-    validators, err := env.StateStore.LoadValidators(height)
-    if err != nil {
-        return nil, err
-    }
-    pick := validators
-    if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
-        if height > 1 {
-            if prev, err := env.StateStore.LoadValidators(height - 1); err == nil && bytes.Equal(prev.Hash(), block.ValidatorsHash) {
-                pick = prev
-            }
-        }
-        if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
-            if next, err := env.StateStore.LoadValidators(height + 1); err == nil && bytes.Equal(next.Hash(), block.ValidatorsHash) {
-                pick = next
-            }
-        }
-        if !bytes.Equal(pick.Hash(), block.ValidatorsHash) {
-            return nil, fmt.Errorf("validator set hash mismatch at height %d", height)
-        }
-    }
-
-    // Her round için consensus'un yaptığı gibi tek çağrıda (times=round) artırma yaparak
-    // proposer'ı hesapla: enterNewRound() -> IncrementProposerPriority(round-currRound)
-    commitRound := commit.Round
-    var rounds []ctypes.ProposerRoundInfo
-
-	// Create a copy of the validator set to simulate proposer selection
-	valSetCopy := pick.Copy()
-
-    for round := int32(0); round <= commitRound; round++ {
-		proposer := valSetCopy.GetProposer()
-		rounds = append(rounds, ctypes.ProposerRoundInfo{
-			Round:            round,
-			Address:          proposer.Address.String(),
-			ProposerPriority: proposer.ProposerPriority,
-		})
-		valSetCopy.IncrementProposerPriority(1)
-	}
-
-    return &ctypes.ResultProposerByRound{
-        BlockProposer:     block.ProposerAddress.String(),
-        CommitRound:       commitRound,
-        ProposerPerRound:  rounds,
-    }, nil
 }
