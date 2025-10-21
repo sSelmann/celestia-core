@@ -163,6 +163,7 @@ type ResultProposerByRound struct {
 
 // ProposerRoundInfo contains proposer information for a specific round
 type ProposerRoundInfo struct {
+	Round            int32  `json:"round"`
 	Address          string `json:"address"`
 	ProposerPriority int64  `json:"proposer_priority"`
 }

@@ -177,7 +177,8 @@ func (env *Environment) GetProposerByRound(
     for round := int32(0); round <= commitRound; round++ {
 		proposer := valSetCopy.GetProposer()
 		rounds = append(rounds, ctypes.ProposerRoundInfo{
-			Address:        proposer.Address.String(),
+			Round:            round,
+			Address:          proposer.Address.String(),
 			ProposerPriority: proposer.ProposerPriority,
 		})
 		valSetCopy.IncrementProposerPriority(1)
