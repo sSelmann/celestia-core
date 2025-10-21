@@ -118,20 +118,21 @@ func (env *Environment) ConsensusParams(
 	}, nil
 }
 
-// ProposersForRounds gets the proposers for given rounds at a specific height.
+// ProposersForRounds gets the proposers for rounds up to the commit round at a specific height.
 func (env *Environment) ProposersForRounds(
 	_ *rpctypes.Context,
 	heightPtr *int64,
-	startRound, endRound int32,
 ) (*ctypes.ResultProposers, error) {
 	height, err := env.getHeight(env.latestUncommittedHeight(), heightPtr)
 	if err != nil {
 		return nil, err
 	}
 
-	if startRound > endRound || startRound < 0 {
-		return nil, fmt.Errorf("invalid round range: start %d, end %d", startRound, endRound)
+	commit := env.BlockStore.LoadBlockCommit(height)
+	if commit == nil {
+		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
+	endRound := commit.Round
 
 	validators, err := env.StateStore.LoadValidators(height)
 	if err != nil {
@@ -139,9 +140,11 @@ func (env *Environment) ProposersForRounds(
 	}
 
 	proposers := make(map[string]string)
-	for r := startRound; r <= endRound; r++ {
+	for r := int32(0); r <= endRound; r++ {
 		vs := validators.Copy()
-		vs.IncrementProposerPriority(r + 1)
+		if r > 0 {
+			vs.IncrementProposerPriority(r)
+		}
 		prop := vs.GetProposer()
 		proposers[fmt.Sprintf("%d", r)] = fmt.Sprintf("%X", prop.Address)
 	}

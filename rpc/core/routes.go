@@ -35,7 +35,7 @@ func (env *Environment) GetRoutes() RoutesMap {
 		"block_search":         rpc.NewRPCFunc(env.BlockSearch, "query,page,per_page,order_by"),
 		"validators":           rpc.NewRPCFunc(env.Validators, "height,page,per_page", rpc.Cacheable("height")),
 
-		"proposers_for_rounds": rpc.NewRPCFunc(env.ProposersForRounds, "height,start_round,end_round", rpc.Cacheable("height")),
+		"proposers_for_rounds": rpc.NewRPCFunc(env.ProposersForRounds, "height", rpc.Cacheable("height")),
 
 		"dump_consensus_state": rpc.NewRPCFunc(env.DumpConsensusState, ""),
 		"consensus_state":      rpc.NewRPCFunc(env.GetConsensusState, ""),
