@@ -1,7 +1,6 @@
 package core
 
 import (
-    "bytes"
     "fmt"
     
     cm "github.com/cometbft/cometbft/consensus"
