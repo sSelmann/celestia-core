@@ -67,16 +67,32 @@ func (env *Environment) BlockProposers(
 	// Calculate proposers for each round from 0 to commitRound
 	roundProposers := make([]ctypes.RoundProposer, 0, commitRound+1)
 
+	// Load the validator set for the PREVIOUS height to get the base state
+	// This is because LoadValidators(height) already increments for the current height
+	var baseValidatorSet *types.ValidatorSet
+	var err error
+	
+	if height == 1 {
+		// For height 1, use the validator set from height 1 itself
+		baseValidatorSet = validatorSet
+	} else {
+		baseValidatorSet, err = env.StateStore.LoadValidators(height - 1)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load validators for height %d: %w", height-1, err)
+		}
+		if baseValidatorSet == nil {
+			return nil, fmt.Errorf("validator set not found for height %d", height-1)
+		}
+	}
+
 	for round := int32(0); round <= commitRound; round++ {
-		// Create a copy of the validator set for this round
-		vals := validatorSet.Copy()
+		// Create a copy of the base validator set for this round
+		vals := baseValidatorSet.Copy()
 
 		// Increment proposer priority for this round
-		// Round 0 uses the base validator set (already has proposer from previous block's final state)
-		// For round > 0, we need to increment
-		if round > 0 {
-			vals.IncrementProposerPriority(round)
-		}
+		// Round 0 uses the base validator set from previous height
+		// For round > 0, we need to increment by the round number
+		vals.IncrementProposerPriority(round)
 
 		// Get the proposer for this round
 		proposer := vals.GetProposer()
