@@ -289,3 +289,17 @@ type ResultDataRootInclusionProof struct {
 type ResultShareProof struct {
 	ShareProof types.ShareProof `json:"share_proof"`
 }
+
+// RoundProposer represents the proposer for a specific round.
+type RoundProposer struct {
+	Round          int32          `json:"round"`
+	ProposerAddr   bytes.HexBytes `json:"proposer_address"`
+	ProposerPubKey crypto.PubKey  `json:"proposer_pubkey"`
+}
+
+// ResultBlockProposers contains the proposers for each round of a block.
+type ResultBlockProposers struct {
+	BlockHeight    int64           `json:"block_height"`
+	CommitRound    int32           `json:"commit_round"`
+	RoundProposers []RoundProposer `json:"round_proposers"`
+}
