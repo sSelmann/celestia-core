@@ -152,64 +152,20 @@ func (env *Environment) GetProposerByRound(
 
     // Deterministik simülasyon: proposer cache'i kullanmadan priority'lerden hesapla
     // Round 0 başlangıcı: Proposer'ı sıfırla ve yeniden hesapla
-    // Round 0 deterministik başlangıç: proposer cache'ini temizle ve priority'lerden hesapla
-    // NOT: ValidatorSetFromProto yüklerken Proposer alanı "previous proposer" olabilir.
-    // Bu nedenle cache'i temizleyip priority karşılaştırması ile seçmek gerekir.
+    // Round 0 başlangıcı: mevcut proposer cache'ini kullan; konsensus da bu şekilde başlıyor
     valSet := validators.Copy()
-    valSet.Proposer = nil
-    // findProposer eşdeğeri: highest priority (tie -> lower address)
-    {
-        var chosen *types.Validator
-        for _, v := range valSet.Validators {
-            if chosen == nil {
-                chosen = v
-                continue
-            }
-            switch {
-            case v.ProposerPriority > chosen.ProposerPriority:
-                chosen = v
-            case v.ProposerPriority < chosen.ProposerPriority:
-                // keep
-            default:
-                if bytes.Compare(v.Address, chosen.Address) < 0 {
-                    chosen = v
-                }
-            }
-        }
-        valSet.Proposer = chosen
-    }
 
     commitRound := commit.Round
     var rounds []ctypes.ProposerRoundInfo
 
     for round := int32(0); round <= commitRound; round++ {
         if round > 0 {
-            // Her round geçişinde priority'leri bir kez artır
+            // Her round geçişinde priority'leri bir kez artır; IncrementProposerPriority
+            // seçilen proposer'ı vals.Proposer'a yazar (mostest)
             valSet.IncrementProposerPriority(1)
-            // Cache'lenmiş proposer'ı temizle; bir sonraki round için yeniden hesaplansın
-            valSet.Proposer = nil
-            // findProposer eşdeğeriyle seç (cache'e yaz)
-            var chosen *types.Validator
-            for _, v := range valSet.Validators {
-                if chosen == nil {
-                    chosen = v
-                    continue
-                }
-                switch {
-                case v.ProposerPriority > chosen.ProposerPriority:
-                    chosen = v
-                case v.ProposerPriority < chosen.ProposerPriority:
-                    // keep
-                default:
-                    if bytes.Compare(v.Address, chosen.Address) < 0 {
-                        chosen = v
-                    }
-                }
-            }
-            valSet.Proposer = chosen
         }
 
-        proposer := valSet.Proposer
+        proposer := valSet.GetProposer()
         if proposer == nil {
             break
         }
