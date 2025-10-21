@@ -132,19 +132,40 @@ func (env *Environment) ProposersForRounds(
 	if commit == nil {
 		return nil, fmt.Errorf("no commit found for height %d", height)
 	}
-	endRound := commit.Round
 
-	validators, err := env.StateStore.LoadValidators(height)
+	state, err := env.StateStore.Load(height)
+	if err != nil {
+		return nil, err
+	}
+	lastChange := state.LastHeightValidatorsChanged
+	if lastChange > height {
+		return nil, fmt.Errorf("last validator change %d after height %d", lastChange, height)
+	}
+	if height - lastChange > 10000 {
+		return nil, fmt.Errorf("too many heights (%d) to compute exact proposers, approximate not supported", height - lastChange)
+	}
+
+	validators, err := env.StateStore.LoadValidators(lastChange)
 	if err != nil {
 		return nil, err
 	}
 
+	totalRounds := int64(0)
+	for k := lastChange; k < height; k++ {
+		c := env.BlockStore.LoadBlockCommit(k)
+		if c == nil {
+			return nil, fmt.Errorf("no commit for intermediate height %d", k)
+		}
+		totalRounds += int64(c.Round) + 1
+	}
+
+	validators.IncrementProposerPriority(totalRounds)
+
 	proposers := make(map[string]string)
+	endRound := commit.Round
 	for r := int32(0); r <= endRound; r++ {
 		vs := validators.Copy()
-		if r > 0 {
-			vs.IncrementProposerPriority(r)
-		}
+		vs.IncrementProposerPriority(r)
 		prop := vs.GetProposer()
 		proposers[fmt.Sprintf("%d", r)] = fmt.Sprintf("%X", prop.Address)
 	}
