@@ -221,29 +221,44 @@ func (env *Environment) GetProposerByRound(
 		})
 	} else {
 		// For round > 0, we need to simulate the consensus process
-		// Start with the validator set at round 0
-		valSet := validators.Copy()
+		// DON'T use Copy() - it may not preserve priorities correctly
+		// Instead, use the validator set directly and track proposers
 		
-		// Clear the proposer so GetProposer() recalculates it
-		valSet.Proposer = nil
+		// Round 0: Use the proposer from the validator set we calculated
+		round0Proposer := validators.GetProposer()
+		if round0Proposer == nil {
+			return nil, fmt.Errorf("no proposer found for round 0 at height %d", height)
+		}
 		
-		// For each round from 0 to commitRound, calculate the proposer
-		for round := int32(0); round <= commitRound; round++ {
-			// Get the proposer for this round
-			proposer := valSet.GetProposer()
+		env.Logger.Info("Round 0 proposer from validators",
+			"proposer", round0Proposer.Address.String())
+		
+		rounds = append(rounds, ctypes.ProposerRoundInfo{
+			Round:           0,
+			ProposerAddress: round0Proposer.Address.String(),
+		})
+		
+		// For subsequent rounds, we need to increment
+		// Create a working copy for incrementing
+		workingSet := validators.Copy()
+		
+		for round := int32(1); round <= commitRound; round++ {
+			// Increment for this round
+			workingSet.IncrementProposerPriority(1)
+			
+			proposer := workingSet.GetProposer()
 			if proposer == nil {
 				break
 			}
+			
+			env.Logger.Info("Round proposer calculated",
+				"round", round,
+				"proposer", proposer.Address.String())
 			
 			rounds = append(rounds, ctypes.ProposerRoundInfo{
 				Round:           round,
 				ProposerAddress: proposer.Address.String(),
 			})
-			
-			// Increment for the next round (don't increment after the last round)
-			if round < commitRound {
-				valSet.IncrementProposerPriority(1)
-			}
 		}
 		
 		// Verify: the commit round proposer should match the header
