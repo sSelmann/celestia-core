@@ -147,30 +147,161 @@ func (m *TxInfo) GetError() string {
 	return ""
 }
 
+// ProposerRoundInfo tracks which validator was the proposer for each round
+// and whether they successfully proposed or timed out.
+type ProposerRoundInfo struct {
+	Height          int64  `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	Round           int32  `protobuf:"varint,2,opt,name=round,proto3" json:"round,omitempty"`
+	ProposerAddress []byte `protobuf:"bytes,3,opt,name=proposer_address,json=proposerAddress,proto3" json:"proposer_address,omitempty"`
+	Proposed        bool   `protobuf:"varint,4,opt,name=proposed,proto3" json:"proposed,omitempty"`
+}
+
+func (m *ProposerRoundInfo) Reset()         { *m = ProposerRoundInfo{} }
+func (m *ProposerRoundInfo) String() string { return proto.CompactTextString(m) }
+func (*ProposerRoundInfo) ProtoMessage()    {}
+func (*ProposerRoundInfo) Descriptor() ([]byte, []int) {
+	return fileDescriptor_ff9e53a0a74267f7, []int{2}
+}
+func (m *ProposerRoundInfo) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ProposerRoundInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ProposerRoundInfo.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ProposerRoundInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ProposerRoundInfo.Merge(m, src)
+}
+func (m *ProposerRoundInfo) XXX_Size() int {
+	return m.Size()
+}
+func (m *ProposerRoundInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_ProposerRoundInfo.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ProposerRoundInfo proto.InternalMessageInfo
+
+func (m *ProposerRoundInfo) GetHeight() int64 {
+	if m != nil {
+		return m.Height
+	}
+	return 0
+}
+
+func (m *ProposerRoundInfo) GetRound() int32 {
+	if m != nil {
+		return m.Round
+	}
+	return 0
+}
+
+func (m *ProposerRoundInfo) GetProposerAddress() []byte {
+	if m != nil {
+		return m.ProposerAddress
+	}
+	return nil
+}
+
+func (m *ProposerRoundInfo) GetProposed() bool {
+	if m != nil {
+		return m.Proposed
+	}
+	return false
+}
+
+// BlockProposerInfo stores all proposer information for a specific block height
+type BlockProposerInfo struct {
+	Height int64                `protobuf:"varint,1,opt,name=height,proto3" json:"height,omitempty"`
+	Rounds []*ProposerRoundInfo `protobuf:"bytes,2,rep,name=rounds,proto3" json:"rounds,omitempty"`
+}
+
+func (m *BlockProposerInfo) Reset()         { *m = BlockProposerInfo{} }
+func (m *BlockProposerInfo) String() string { return proto.CompactTextString(m) }
+func (*BlockProposerInfo) ProtoMessage()    {}
+func (*BlockProposerInfo) Descriptor() ([]byte, []int) {
+	return fileDescriptor_ff9e53a0a74267f7, []int{3}
+}
+func (m *BlockProposerInfo) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *BlockProposerInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_BlockProposerInfo.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *BlockProposerInfo) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_BlockProposerInfo.Merge(m, src)
+}
+func (m *BlockProposerInfo) XXX_Size() int {
+	return m.Size()
+}
+func (m *BlockProposerInfo) XXX_DiscardUnknown() {
+	xxx_messageInfo_BlockProposerInfo.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_BlockProposerInfo proto.InternalMessageInfo
+
+func (m *BlockProposerInfo) GetHeight() int64 {
+	if m != nil {
+		return m.Height
+	}
+	return 0
+}
+
+func (m *BlockProposerInfo) GetRounds() []*ProposerRoundInfo {
+	if m != nil {
+		return m.Rounds
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*BlockStoreState)(nil), "tendermint.store.BlockStoreState")
 	proto.RegisterType((*TxInfo)(nil), "tendermint.store.TxInfo")
+	proto.RegisterType((*ProposerRoundInfo)(nil), "tendermint.store.ProposerRoundInfo")
+	proto.RegisterType((*BlockProposerInfo)(nil), "tendermint.store.BlockProposerInfo")
 }
 
 func init() { proto.RegisterFile("tendermint/store/types.proto", fileDescriptor_ff9e53a0a74267f7) }
 
 var fileDescriptor_ff9e53a0a74267f7 = []byte{
-	// 228 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x92, 0x29, 0x49, 0xcd, 0x4b,
-	0x49, 0x2d, 0xca, 0xcd, 0xcc, 0x2b, 0xd1, 0x2f, 0x2e, 0xc9, 0x2f, 0x4a, 0xd5, 0x2f, 0xa9, 0x2c,
-	0x48, 0x2d, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x12, 0x40, 0xc8, 0xea, 0x81, 0x65, 0x95,
-	0x6c, 0xb9, 0xf8, 0x9d, 0x72, 0xf2, 0x93, 0xb3, 0x83, 0x41, 0xbc, 0xe0, 0x92, 0xc4, 0x92, 0x54,
-	0x21, 0x21, 0x2e, 0x96, 0xa4, 0xc4, 0xe2, 0x54, 0x09, 0x46, 0x05, 0x46, 0x0d, 0xe6, 0x20, 0x30,
-	0x5b, 0x48, 0x8c, 0x8b, 0x2d, 0x23, 0x35, 0x33, 0x3d, 0xa3, 0x44, 0x82, 0x09, 0x2c, 0x0a, 0xe5,
-	0x29, 0x25, 0x70, 0xb1, 0x85, 0x54, 0x78, 0xe6, 0xa5, 0xe5, 0x23, 0xa9, 0x60, 0x44, 0x56, 0x21,
-	0x24, 0xc2, 0xc5, 0x9a, 0x99, 0x97, 0x92, 0x5a, 0x01, 0xd6, 0xc8, 0x1b, 0x04, 0xe1, 0x80, 0xec,
-	0x48, 0xce, 0x4f, 0x49, 0x95, 0x60, 0x06, 0x0b, 0x82, 0xd9, 0x20, 0x95, 0xa9, 0x45, 0x45, 0xf9,
-	0x45, 0x12, 0x2c, 0x0a, 0x8c, 0x1a, 0x9c, 0x41, 0x10, 0x8e, 0x93, 0xef, 0x89, 0x47, 0x72, 0x8c,
-	0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7, 0x38, 0xe1, 0xb1, 0x1c, 0xc3, 0x85, 0xc7, 0x72,
-	0x0c, 0x37, 0x1e, 0xcb, 0x31, 0x44, 0x19, 0xa7, 0x67, 0x96, 0x64, 0x94, 0x26, 0xe9, 0x25, 0xe7,
-	0xe7, 0xea, 0x27, 0xe7, 0xe7, 0xa6, 0x96, 0x24, 0xa5, 0x95, 0x20, 0x18, 0x60, 0x0f, 0xeb, 0xa3,
-	0x87, 0x46, 0x12, 0x1b, 0x58, 0xdc, 0x18, 0x10, 0x00, 0x00, 0xff, 0xff, 0xce, 0x99, 0xda, 0x87,
-	0x28, 0x01, 0x00, 0x00,
+	// 325 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x52, 0x3d, 0x4f, 0xc3, 0x30,
+	0x10, 0xad, 0xfb, 0x11, 0x15, 0x03, 0x6a, 0x6b, 0x21, 0x14, 0x21, 0x64, 0x55, 0x61, 0x29, 0x4b,
+	0x22, 0xd1, 0x11, 0x31, 0xd0, 0x8d, 0x01, 0x09, 0xb9, 0x4c, 0x2c, 0xd0, 0xc4, 0xd7, 0x26, 0x82,
+	0xc6, 0x91, 0xed, 0x4a, 0xe5, 0x1f, 0x30, 0xf2, 0xb3, 0x18, 0x3b, 0x32, 0xa2, 0xf6, 0x8f, 0xa0,
+	0x5c, 0x52, 0x5a, 0x15, 0x09, 0xb6, 0x7b, 0xef, 0xde, 0xf9, 0x3d, 0x9f, 0x4d, 0x4f, 0x2d, 0xa4,
+	0x12, 0xf4, 0x34, 0x49, 0x6d, 0x60, 0xac, 0xd2, 0x10, 0xd8, 0xd7, 0x0c, 0x8c, 0x9f, 0x69, 0x65,
+	0x15, 0x6b, 0x6f, 0xba, 0x3e, 0x76, 0xbd, 0x2b, 0xda, 0x1a, 0xbc, 0xa8, 0xe8, 0x79, 0x98, 0xa3,
+	0xa1, 0x1d, 0x59, 0x60, 0x8c, 0xd6, 0xc3, 0x91, 0x01, 0x97, 0x74, 0x49, 0xaf, 0x26, 0xb0, 0x66,
+	0xc7, 0xd4, 0x89, 0x21, 0x99, 0xc4, 0xd6, 0xad, 0x22, 0x5b, 0x22, 0xef, 0x89, 0x3a, 0xf7, 0xf3,
+	0x9b, 0x74, 0xac, 0xb6, 0x14, 0x64, 0x5b, 0xc1, 0x8e, 0x68, 0x23, 0x49, 0x25, 0xcc, 0x71, 0xf0,
+	0x50, 0x14, 0x20, 0xf7, 0x88, 0x94, 0x04, 0xb7, 0x86, 0x24, 0xd6, 0xb9, 0x12, 0xb4, 0x56, 0xda,
+	0xad, 0x77, 0x49, 0x6f, 0x4f, 0x14, 0xc0, 0x7b, 0x23, 0xb4, 0x73, 0xa7, 0x55, 0xa6, 0x0c, 0x68,
+	0xa1, 0x66, 0xa9, 0xfc, 0xcf, 0x4d, 0xe7, 0x22, 0x74, 0x6b, 0x88, 0x02, 0xb0, 0x73, 0xda, 0xce,
+	0xca, 0x23, 0x1e, 0x47, 0x52, 0x6a, 0x30, 0x06, 0x9d, 0x0f, 0x44, 0x6b, 0xcd, 0x5f, 0x17, 0x34,
+	0x3b, 0xa1, 0xcd, 0x92, 0x92, 0x98, 0xa3, 0x29, 0x7e, 0xb0, 0x17, 0xd3, 0x0e, 0xee, 0x6a, 0x1d,
+	0xe7, 0xcf, 0x24, 0x97, 0xd4, 0x41, 0x73, 0xe3, 0x56, 0xbb, 0xb5, 0xde, 0xfe, 0xc5, 0x99, 0xbf,
+	0xbb, 0x7b, 0xff, 0xd7, 0xb5, 0x44, 0x39, 0x32, 0xb8, 0xfd, 0x58, 0x72, 0xb2, 0x58, 0x72, 0xf2,
+	0xb5, 0xe4, 0xe4, 0x7d, 0xc5, 0x2b, 0x8b, 0x15, 0xaf, 0x7c, 0xae, 0x78, 0xe5, 0xa1, 0x3f, 0x49,
+	0x6c, 0x3c, 0x0b, 0xfd, 0x48, 0x4d, 0x83, 0x48, 0x4d, 0xc1, 0x86, 0x63, 0xbb, 0x29, 0xf0, 0x95,
+	0x83, 0xdd, 0x2f, 0x10, 0x3a, 0xc8, 0xf7, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x12, 0xb9, 0x26,
+	0x29, 0x1d, 0x02, 0x00, 0x00,
 }
 
 func (m *BlockStoreState) Marshal() (dAtA []byte, err error) {
@@ -251,6 +382,98 @@ func (m *TxInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *ProposerRoundInfo) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ProposerRoundInfo) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProposerRoundInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Proposed {
+		i--
+		if m.Proposed {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.ProposerAddress) > 0 {
+		i -= len(m.ProposerAddress)
+		copy(dAtA[i:], m.ProposerAddress)
+		i = encodeVarintTypes(dAtA, i, uint64(len(m.ProposerAddress)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Round != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Round))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Height != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Height))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *BlockProposerInfo) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *BlockProposerInfo) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *BlockProposerInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Rounds) > 0 {
+		for iNdEx := len(m.Rounds) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Rounds[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintTypes(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.Height != 0 {
+		i = encodeVarintTypes(dAtA, i, uint64(m.Height))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -295,6 +518,46 @@ func (m *TxInfo) Size() (n int) {
 	l = len(m.Error)
 	if l > 0 {
 		n += 1 + l + sovTypes(uint64(l))
+	}
+	return n
+}
+
+func (m *ProposerRoundInfo) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Height != 0 {
+		n += 1 + sovTypes(uint64(m.Height))
+	}
+	if m.Round != 0 {
+		n += 1 + sovTypes(uint64(m.Round))
+	}
+	l = len(m.ProposerAddress)
+	if l > 0 {
+		n += 1 + l + sovTypes(uint64(l))
+	}
+	if m.Proposed {
+		n += 2
+	}
+	return n
+}
+
+func (m *BlockProposerInfo) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Height != 0 {
+		n += 1 + sovTypes(uint64(m.Height))
+	}
+	if len(m.Rounds) > 0 {
+		for _, e := range m.Rounds {
+			l = e.Size()
+			n += 1 + l + sovTypes(uint64(l))
+		}
 	}
 	return n
 }
@@ -510,6 +773,251 @@ func (m *TxInfo) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ProposerRoundInfo) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProposerRoundInfo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProposerRoundInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Height", wireType)
+			}
+			m.Height = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Height |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Round", wireType)
+			}
+			m.Round = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Round |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ProposerAddress", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ProposerAddress = append(m.ProposerAddress[:0], dAtA[iNdEx:postIndex]...)
+			if m.ProposerAddress == nil {
+				m.ProposerAddress = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Proposed", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Proposed = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTypes(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *BlockProposerInfo) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTypes
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: BlockProposerInfo: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: BlockProposerInfo: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Height", wireType)
+			}
+			m.Height = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Height |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Rounds", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTypes
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthTypes
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthTypes
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Rounds = append(m.Rounds, &ProposerRoundInfo{})
+			if err := m.Rounds[len(m.Rounds)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
