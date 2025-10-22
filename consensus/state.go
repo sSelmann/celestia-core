@@ -2196,6 +2196,13 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
 
+	// Mark this round's proposer as having successfully proposed
+	cs.proposerRoundsMtx.Lock()
+	if info, ok := cs.proposerRounds[proposal.Round]; ok {
+		info.Proposed = true
+	}
+	cs.proposerRoundsMtx.Unlock()
+
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil
 }
