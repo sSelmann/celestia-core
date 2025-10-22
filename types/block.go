@@ -1078,16 +1078,40 @@ type ExtendedCommit struct {
 	Round              int32
 	BlockID            BlockID
 	ExtendedSignatures []ExtendedCommitSig
+	ProposerRounds     []*ProposerRoundInfo
 
 	bitArray *bits.BitArray
+}
+
+// ProposerRoundInfo tracks which validator was the proposer for each round
+// and whether they successfully proposed or timed out.
+type ProposerRoundInfo struct {
+	Round           int32
+	ProposerAddress []byte
+	Proposed        bool
 }
 
 // Clone creates a deep copy of this extended commit.
 func (ec *ExtendedCommit) Clone() *ExtendedCommit {
 	sigs := make([]ExtendedCommitSig, len(ec.ExtendedSignatures))
 	copy(sigs, ec.ExtendedSignatures)
+	
+	// Deep copy ProposerRounds
+	var proposerRounds []*ProposerRoundInfo
+	if len(ec.ProposerRounds) > 0 {
+		proposerRounds = make([]*ProposerRoundInfo, len(ec.ProposerRounds))
+		for i, r := range ec.ProposerRounds {
+			proposerRounds[i] = &ProposerRoundInfo{
+				Round:           r.Round,
+				ProposerAddress: append([]byte{}, r.ProposerAddress...),
+				Proposed:        r.Proposed,
+			}
+		}
+	}
+	
 	ecc := *ec
 	ecc.ExtendedSignatures = sigs
+	ecc.ProposerRounds = proposerRounds
 	return &ecc
 }
 
@@ -1278,6 +1302,19 @@ func (ec *ExtendedCommit) ToProto() *cmtproto.ExtendedCommit {
 	c.Round = ec.Round
 	c.BlockID = ec.BlockID.ToProto()
 
+	// Convert ProposerRounds to proto
+	if len(ec.ProposerRounds) > 0 {
+		protoRounds := make([]cmtproto.ProposerRoundInfo, len(ec.ProposerRounds))
+		for i, r := range ec.ProposerRounds {
+			protoRounds[i] = cmtproto.ProposerRoundInfo{
+				Round:           r.Round,
+				ProposerAddress: r.ProposerAddress,
+				Proposed:        r.Proposed,
+			}
+		}
+		c.ProposerRounds = protoRounds
+	}
+
 	return c
 }
 
@@ -1305,6 +1342,19 @@ func ExtendedCommitFromProto(ecp *cmtproto.ExtendedCommit) (*ExtendedCommit, err
 	extCommit.Height = ecp.Height
 	extCommit.Round = ecp.Round
 	extCommit.BlockID = *bi
+
+	// Convert ProposerRounds from proto
+	if len(ecp.ProposerRounds) > 0 {
+		proposerRounds := make([]*ProposerRoundInfo, len(ecp.ProposerRounds))
+		for i, r := range ecp.ProposerRounds {
+			proposerRounds[i] = &ProposerRoundInfo{
+				Round:           r.Round,
+				ProposerAddress: r.ProposerAddress,
+				Proposed:        r.Proposed,
+			}
+		}
+		extCommit.ProposerRounds = proposerRounds
+	}
 
 	return extCommit, extCommit.ValidateBasic()
 }
