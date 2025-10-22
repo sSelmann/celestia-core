@@ -112,6 +112,19 @@ func (s *ResultStatus) TxIndexEnabled() bool {
 	return s.NodeInfo.Other.TxIndex == "on"
 }
 
+// ProposerRoundInfo contains information about a proposer in a specific round
+type ProposerRoundInfo struct {
+	Round           int32          `json:"round"`
+	ProposerAddress bytes.HexBytes `json:"proposer_address"`
+	Proposed        bool           `json:"proposed"`
+}
+
+// ResultProposerInfo contains proposer tracking information for a block
+type ResultProposerInfo struct {
+	Height int64                `json:"height"`
+	Rounds []*ProposerRoundInfo `json:"rounds"`
+}
+
 // Info about peer connections
 type ResultNetInfo struct {
 	Listening bool     `json:"listening"`

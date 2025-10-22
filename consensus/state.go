@@ -162,6 +162,10 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
+	// track proposer information for each round
+	proposerRoundsMtx cmtsync.RWMutex
+	proposerRounds    map[int32]*types.ProposerRoundInfo // round -> proposer info
+
 	// offline state sync height indicating to which height the node synced offline
 	offlineStateSyncHeight int64
 
@@ -201,6 +205,7 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
+		proposerRounds:       make(map[int32]*types.ProposerRoundInfo),
 	}
 	for _, option := range options {
 		option(cs)
@@ -1209,6 +1214,20 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.ProposalBlockParts = nil
 	}
 
+	// Track proposer for this round
+	cs.proposerRoundsMtx.Lock()
+	// Initialize map for new height
+	if round == 0 {
+		cs.proposerRounds = make(map[int32]*types.ProposerRoundInfo)
+	}
+	// Record proposer for this round (initially mark as not proposed)
+	cs.proposerRounds[round] = &types.ProposerRoundInfo{
+		Round:           round,
+		ProposerAddress: propAddress,
+		Proposed:        false,
+	}
+	cs.proposerRoundsMtx.Unlock()
+
 	logger.Debug("entering new round",
 		"previous", log.NewLazySprintf("%v/%v/%v", prevHeight, prevRound, prevStep),
 		"proposer", propAddress,
@@ -1914,6 +1933,22 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		seenCommit = seenExtendedCommit.ToCommit()
+		
+		// Add proposer round information to ExtendedCommit
+		cs.proposerRoundsMtx.RLock()
+		if len(cs.proposerRounds) > 0 {
+			proposerRounds := make([]*types.ProposerRoundInfo, 0, len(cs.proposerRounds))
+			for _, roundInfo := range cs.proposerRounds {
+				proposerRounds = append(proposerRounds, roundInfo)
+			}
+			// Sort by round number for consistency
+			sort.Slice(proposerRounds, func(i, j int) bool {
+				return proposerRounds[i].Round < proposerRounds[j].Round
+			})
+			seenExtendedCommit.ProposerRounds = proposerRounds
+		}
+		cs.proposerRoundsMtx.RUnlock()
+		
 		cs.unlockAll()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
 			cs.blockStore.SaveBlockWithExtendedCommit(block, blockParts, seenExtendedCommit)
@@ -2166,6 +2201,13 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
+
+	// Mark this round's proposer as having successfully proposed
+	cs.proposerRoundsMtx.Lock()
+	if info, ok := cs.proposerRounds[proposal.Round]; ok {
+		info.Proposed = true
+	}
+	cs.proposerRoundsMtx.Unlock()
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil

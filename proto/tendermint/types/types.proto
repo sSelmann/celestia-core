@@ -148,6 +148,16 @@ message ExtendedCommit {
   BlockID block_id = 3
       [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   repeated ExtendedCommitSig extended_signatures = 4 [(gogoproto.nullable) = false];
+  // Proposer information for all rounds attempted for this block
+  repeated ProposerRoundInfo proposer_rounds = 5 [(gogoproto.nullable) = false];
+}
+
+// ProposerRoundInfo tracks which validator was the proposer for each round
+// and whether they successfully proposed or timed out.
+message ProposerRoundInfo {
+  int32 round             = 1;
+  bytes proposer_address  = 2;
+  bool  proposed          = 3;
 }
 
 // ExtendedCommitSig retains all the same fields as CommitSig but adds vote
