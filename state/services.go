@@ -42,6 +42,9 @@ type BlockStore interface {
 	LoadTxInfo(hash []byte) *cmtstore.TxInfo
 	SaveTxInfo(block *types.Block, txResponseCodes []uint32, logs []string) error
 
+	LoadProposerInfo(height int64) *cmtstore.BlockProposerInfo
+	SaveProposerInfo(height int64, rounds []*cmtstore.ProposerRoundInfo) error
+
 	DeleteLatestBlock() error
 
 	Close() error
