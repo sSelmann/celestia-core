@@ -104,6 +104,19 @@ type ResultStatus struct {
 	ValidatorInfo ValidatorInfo       `json:"validator_info"`
 }
 
+// ProposerRoundInfo contains information about a proposer in a specific round
+type ProposerRoundInfo struct {
+	Round           int32          `json:"round"`
+	ProposerAddress bytes.HexBytes `json:"proposer_address"`
+	Proposed        bool           `json:"proposed"`
+}
+
+// ResultProposerInfo contains proposer tracking information for a block
+type ResultProposerInfo struct {
+	Height int64                `json:"height"`
+	Rounds []*ProposerRoundInfo `json:"rounds"`
+}
+
 // Is TxIndexing enabled
 func (s *ResultStatus) TxIndexEnabled() bool {
 	if s == nil {

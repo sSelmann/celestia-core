@@ -32,6 +32,7 @@ import (
 	"github.com/cometbft/cometbft/libs/trace"
 	"github.com/cometbft/cometbft/libs/trace/schema"
 	"github.com/cometbft/cometbft/p2p"
+	cmtstore "github.com/cometbft/cometbft/proto/tendermint/store"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	sm "github.com/cometbft/cometbft/state"
 	"github.com/cometbft/cometbft/types"
@@ -160,6 +161,10 @@ type State struct {
 	// for reporting metrics
 	metrics *Metrics
 
+	// track proposer information for each round
+	proposerRoundsMtx cmtsync.RWMutex
+	proposerRounds    map[int32]*cmtstore.ProposerRoundInfo // round -> proposer info
+
 	// offline state sync height indicating to which height the node synced offline
 	offlineStateSyncHeight int64
 
@@ -199,6 +204,7 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
+		proposerRounds:       make(map[int32]*cmtstore.ProposerRoundInfo),
 	}
 	for _, option := range options {
 		option(cs)
@@ -1207,6 +1213,21 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.ProposalBlockParts = nil
 	}
 
+	// Track proposer for this round
+	cs.proposerRoundsMtx.Lock()
+	// Initialize map for new height
+	if round == 0 {
+		cs.proposerRounds = make(map[int32]*cmtstore.ProposerRoundInfo)
+	}
+	// Record proposer for this round (initially mark as not proposed)
+	cs.proposerRounds[round] = &cmtstore.ProposerRoundInfo{
+		Height:          height,
+		Round:           round,
+		ProposerAddress: propAddress,
+		Proposed:        false,
+	}
+	cs.proposerRoundsMtx.Unlock()
+
 	logger.Debug("entering new round",
 		"previous", log.NewLazySprintf("%v/%v/%v", prevHeight, prevRound, prevStep),
 		"proposer", propAddress,
@@ -1398,6 +1419,13 @@ func (cs *State) defaultDecideProposal(height int64, round int32) {
 		}()
 		cs.propagator.ProposeBlock(proposal, blockParts, metaData)
 		wg.Wait()
+
+		// Mark this round as successfully proposed
+		cs.proposerRoundsMtx.Lock()
+		if info, ok := cs.proposerRounds[round]; ok {
+			info.Proposed = true
+		}
+		cs.proposerRoundsMtx.Unlock()
 
 		cs.Logger.Debug("signed proposal", "height", height, "round", round, "proposal", proposal)
 	} else if !cs.replayMode {
@@ -1987,6 +2015,23 @@ func (cs *State) finalizeCommit(height int64) {
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
+
+	// Save proposer tracking information
+	cs.proposerRoundsMtx.Lock()
+	if len(cs.proposerRounds) > 0 {
+		rounds := make([]*cmtstore.ProposerRoundInfo, 0, len(cs.proposerRounds))
+		for _, roundInfo := range cs.proposerRounds {
+			rounds = append(rounds, roundInfo)
+		}
+		// Sort by round number for consistency
+		sort.Slice(rounds, func(i, j int) bool {
+			return rounds[i].Round < rounds[j].Round
+		})
+		if err := cs.blockStore.SaveProposerInfo(height, rounds); err != nil {
+			logger.Error("failed to save proposer info", "height", height, "err", err)
+		}
+	}
+	cs.proposerRoundsMtx.Unlock()
 
 	// cs.StartTime is already set.
 	// Schedule Round0 to start soon.

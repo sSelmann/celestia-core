@@ -19,3 +19,18 @@ message TxInfo {
   // The error log output generated if the transaction execution fails.
   string error = 4;
 }
+
+// ProposerRoundInfo tracks which validator was the proposer for each round
+// and whether they successfully proposed or timed out.
+message ProposerRoundInfo {
+  int64  height           = 1;
+  int32  round            = 2;
+  bytes  proposer_address = 3;
+  bool   proposed         = 4; // true if successfully proposed, false if timed out
+}
+
+// BlockProposerInfo stores all proposer information for a specific block height
+message BlockProposerInfo {
+  int64                        height = 1;
+  repeated ProposerRoundInfo   rounds = 2;
+}

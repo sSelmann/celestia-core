@@ -680,6 +680,10 @@ func calcTxHashKey(hash []byte) []byte {
 	return []byte(fmt.Sprintf("TH:%x", hash))
 }
 
+func calcProposerInfoKey(height int64) []byte {
+	return []byte(fmt.Sprintf("PI:%v", height))
+}
+
 //-----------------------------------------------------------------------------
 
 var blockStoreKey = []byte("blockStore")
@@ -844,4 +848,46 @@ func (bs *BlockStore) LoadTxInfo(txHash []byte) *cmtstore.TxInfo {
 		panic(fmt.Errorf("unmarshal to TxInfo failed: %w", err))
 	}
 	return &txi
+}
+
+// SaveProposerInfo saves proposer information for a given height.
+// It stores which validator was proposer for each round and whether they proposed successfully.
+func (bs *BlockStore) SaveProposerInfo(height int64, rounds []*cmtstore.ProposerRoundInfo) error {
+	if len(rounds) == 0 {
+		return nil // Nothing to save
+	}
+
+	proposerInfo := &cmtstore.BlockProposerInfo{
+		Height: height,
+		Rounds: rounds,
+	}
+
+	proposerInfoBytes, err := proto.Marshal(proposerInfo)
+	if err != nil {
+		return fmt.Errorf("unable to marshal proposer info: %w", err)
+	}
+
+	if err := bs.db.SetSync(calcProposerInfoKey(height), proposerInfoBytes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// LoadProposerInfo loads proposer information for a given height.
+// Returns nil if no proposer info is found for the height.
+func (bs *BlockStore) LoadProposerInfo(height int64) *cmtstore.BlockProposerInfo {
+	bz, err := bs.db.Get(calcProposerInfoKey(height))
+	if err != nil {
+		panic(err)
+	}
+	if len(bz) == 0 {
+		return nil
+	}
+
+	var proposerInfo cmtstore.BlockProposerInfo
+	if err = proto.Unmarshal(bz, &proposerInfo); err != nil {
+		panic(fmt.Errorf("unmarshal to BlockProposerInfo failed: %w", err))
+	}
+	return &proposerInfo
 }

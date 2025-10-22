@@ -546,3 +546,37 @@ func (env *Environment) GenerateDataRootInclusionProof(height int64, start, end 
 	}
 	return proof, nil
 }
+
+// ProposerInfo gets proposer tracking information for a given height.
+// It returns which validator was the proposer for each round and whether they
+// successfully proposed or timed out.
+// If no height is provided, it will fetch info for the latest block.
+func (env *Environment) ProposerInfo(_ *rpctypes.Context, heightPtr *int64) (*ctypes.ResultProposerInfo, error) {
+	height, err := env.getHeight(env.BlockStore.Height(), heightPtr)
+	if err != nil {
+		return nil, err
+	}
+
+	proposerInfo := env.BlockStore.LoadProposerInfo(height)
+	if proposerInfo == nil {
+		return &ctypes.ResultProposerInfo{
+			Height: height,
+			Rounds: []*ctypes.ProposerRoundInfo{},
+		}, nil
+	}
+
+	// Convert from proto to RPC response format
+	rounds := make([]*ctypes.ProposerRoundInfo, len(proposerInfo.Rounds))
+	for i, r := range proposerInfo.Rounds {
+		rounds[i] = &ctypes.ProposerRoundInfo{
+			Round:           r.Round,
+			ProposerAddress: r.ProposerAddress,
+			Proposed:        r.Proposed,
+		}
+	}
+
+	return &ctypes.ResultProposerInfo{
+		Height: height,
+		Rounds: rounds,
+	}, nil
+}
