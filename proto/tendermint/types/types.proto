@@ -155,9 +155,9 @@ message ExtendedCommit {
 // ProposerRoundInfo tracks which validator was the proposer for each round
 // and whether they successfully proposed or timed out.
 message ProposerRoundInfo {
-  int32 round             = 1;
-  bytes proposer_address  = 2;
-  bool  proposed          = 3;
+  int32 round            = 1;
+  bytes proposer_address = 2;
+  bool  proposed         = 3;
 }
 
 // ExtendedCommitSig retains all the same fields as CommitSig but adds vote
