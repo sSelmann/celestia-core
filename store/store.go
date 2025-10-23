@@ -587,7 +587,17 @@ func (bs *BlockStore) saveBlockToBatch(
 	}
 
 	// Save block commit (duplicate and separate from the Block)
-	pbc := block.LastCommit.ToProto()
+	// Use the previous height's seenCommit if available to preserve round_proposers
+	blockCommit := block.LastCommit
+	if height > bs.Base() {
+		// Try to load the previous seenCommit which has round_proposers
+		prevSeenCommit := bs.LoadSeenCommit(height - 1)
+		if prevSeenCommit != nil && len(prevSeenCommit.RoundProposers) > 0 {
+			// Use the seenCommit instead of block.LastCommit to preserve round_proposers
+			blockCommit = prevSeenCommit
+		}
+	}
+	pbc := blockCommit.ToProto()
 	blockCommitBytes := mustEncode(pbc)
 	if err := batch.Set(calcBlockCommitKey(height-1), blockCommitBytes); err != nil {
 		return err
