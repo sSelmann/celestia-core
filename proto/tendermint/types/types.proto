@@ -125,12 +125,24 @@ message Vote {
   bytes extension_signature = 10;
 }
 
+// ProposerRoundInfo tracks which validator was the proposer for a round
+// and whether they successfully proposed a block for that round.
+message ProposerRoundInfo {
+  int32 round            = 1;
+  bytes proposer_address = 2;
+  bool  proposed         = 3;  // true if proposer successfully proposed a block in this round
+}
+
 // Commit contains the evidence that a block was committed by a set of validators.
 message Commit {
   int64              height     = 1;
   int32              round      = 2;
   BlockID            block_id   = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
+  // round_proposers tracks all proposers and their proposal status for each round
+  // that occurred before the block was committed. This allows tracking which
+  // validators missed their proposal opportunity.
+  repeated ProposerRoundInfo round_proposers = 5 [(gogoproto.nullable) = false];
 }
 
 // CommitSig is a part of the Vote included in a Commit.
@@ -148,6 +160,10 @@ message ExtendedCommit {
   BlockID block_id = 3
       [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   repeated ExtendedCommitSig extended_signatures = 4 [(gogoproto.nullable) = false];
+  // round_proposers tracks all proposers and their proposal status for each round
+  // that occurred before the block was committed. This allows tracking which
+  // validators missed their proposal opportunity.
+  repeated ProposerRoundInfo round_proposers = 5 [(gogoproto.nullable) = false];
 }
 
 // ExtendedCommitSig retains all the same fields as CommitSig but adds vote

@@ -167,6 +167,11 @@ type State struct {
 
 	// traceClient is used to trace the state machine.
 	traceClient trace.Tracer
+
+	// roundProposers tracks proposers for each round in the current height
+	// Key: round number, Value: ProposerRoundInfo
+	roundProposersMtx cmtsync.RWMutex
+	roundProposers    map[int32]*types.ProposerRoundInfo
 }
 
 // StateOption sets an optional parameter on the State.
@@ -201,6 +206,7 @@ func NewState(
 		metrics:              NopMetrics(),
 		traceClient:          trace.NoOpTracer(),
 		newHeightOrRoundChan: make(chan struct{}, 1),
+		roundProposers:       make(map[int32]*types.ProposerRoundInfo),
 	}
 	for _, option := range options {
 		option(cs)
@@ -870,6 +876,11 @@ func (cs *State) updateToState(state sm.State) {
 
 	cs.state = state
 
+	// Reset round proposers for new height
+	cs.roundProposersMtx.Lock()
+	cs.roundProposers = make(map[int32]*types.ProposerRoundInfo)
+	cs.roundProposersMtx.Unlock()
+
 	// Finally, broadcast RoundState
 	cs.newStep()
 }
@@ -1223,6 +1234,15 @@ func (cs *State) enterNewRound(height int64, round int32) {
 
 	cs.propagator.SetHeightAndRound(height, round)
 	proposer := cs.rs.Validators.GetProposer()
+
+	// Track proposer for this round
+	cs.roundProposersMtx.Lock()
+	cs.roundProposers[round] = &types.ProposerRoundInfo{
+		Round:           round,
+		ProposerAddress: proposer.Address,
+		Proposed:        false, // Will be set to true when proposal is received
+	}
+	cs.roundProposersMtx.Unlock()
 	if proposer != nil {
 		cs.propagator.SetProposer(proposer.PubKey)
 	}
@@ -1913,6 +1933,18 @@ func (cs *State) finalizeCommit(height int64) {
 		// NOTE: the seenCommit is local justification to commit this block,
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
+		
+		// Add round proposers information to the commit
+		cs.roundProposersMtx.RLock()
+		roundProposers := make([]types.ProposerRoundInfo, 0, len(cs.roundProposers))
+		for i := int32(0); i <= cs.rs.CommitRound; i++ {
+			if pri, ok := cs.roundProposers[i]; ok {
+				roundProposers = append(roundProposers, *pri)
+			}
+		}
+		cs.roundProposersMtx.RUnlock()
+		seenExtendedCommit.RoundProposers = roundProposers
+		
 		seenCommit = seenExtendedCommit.ToCommit()
 		cs.unlockAll()
 		if cs.state.ConsensusParams.ABCI.VoteExtensionsEnabled(block.Height) {
@@ -2166,6 +2198,13 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	if cs.rs.ProposalBlockParts == nil {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
+
+	// Mark that proposer successfully proposed for this round
+	cs.roundProposersMtx.Lock()
+	if pri, ok := cs.roundProposers[proposal.Round]; ok {
+		pri.Proposed = true
+	}
+	cs.roundProposersMtx.Unlock()
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil

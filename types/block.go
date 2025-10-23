@@ -860,6 +860,38 @@ func (ecs *ExtendedCommitSig) FromProto(ecsp cmtproto.ExtendedCommitSig) error {
 
 //-------------------------------------
 
+// ProposerRoundInfo tracks which validator was the proposer for a round
+// and whether they successfully proposed a block for that round.
+type ProposerRoundInfo struct {
+	Round           int32   `json:"round"`
+	ProposerAddress Address `json:"proposer_address"`
+	Proposed        bool    `json:"proposed"` // true if proposer successfully proposed a block in this round
+}
+
+// ToProto converts ProposerRoundInfo to protobuf
+func (pri *ProposerRoundInfo) ToProto() *cmtproto.ProposerRoundInfo {
+	if pri == nil {
+		return nil
+	}
+	return &cmtproto.ProposerRoundInfo{
+		Round:           pri.Round,
+		ProposerAddress: pri.ProposerAddress,
+		Proposed:        pri.Proposed,
+	}
+}
+
+// ProposerRoundInfoFromProto converts from protobuf to ProposerRoundInfo
+func ProposerRoundInfoFromProto(prip *cmtproto.ProposerRoundInfo) (*ProposerRoundInfo, error) {
+	if prip == nil {
+		return nil, errors.New("nil ProposerRoundInfo")
+	}
+	return &ProposerRoundInfo{
+		Round:           prip.Round,
+		ProposerAddress: prip.ProposerAddress,
+		Proposed:        prip.Proposed,
+	}, nil
+}
+
 // Commit contains the evidence that a block was committed by a set of validators.
 // NOTE: Commit is empty for height 1, but never nil.
 type Commit struct {
@@ -872,6 +904,11 @@ type Commit struct {
 	BlockID    BlockID     `json:"block_id"`
 	Signatures []CommitSig `json:"signatures"`
 
+	// RoundProposers tracks all proposers and their proposal status for each round
+	// that occurred before the block was committed. This allows tracking which
+	// validators missed their proposal opportunity.
+	RoundProposers []ProposerRoundInfo `json:"round_proposers"`
+
 	// Memoized in first call to corresponding method.
 	// NOTE: can't memoize in constructor because constructor isn't used for
 	// unmarshaling.
@@ -882,8 +919,11 @@ type Commit struct {
 func (commit *Commit) Clone() *Commit {
 	sigs := make([]CommitSig, len(commit.Signatures))
 	copy(sigs, commit.Signatures)
+	roundProposers := make([]ProposerRoundInfo, len(commit.RoundProposers))
+	copy(roundProposers, commit.RoundProposers)
 	commCopy := *commit
 	commCopy.Signatures = sigs
+	commCopy.RoundProposers = roundProposers
 	return &commCopy
 }
 
@@ -952,6 +992,18 @@ func (commit *Commit) ValidateBasic() error {
 			}
 		}
 	}
+
+	// Validate round proposers
+	for i, pri := range commit.RoundProposers {
+		if pri.Round < 0 {
+			return fmt.Errorf("negative round in ProposerRoundInfo #%d", i)
+		}
+		if len(pri.ProposerAddress) != crypto.AddressSize {
+			return fmt.Errorf("invalid proposer address length in ProposerRoundInfo #%d: got %d, expected %d",
+				i, len(pri.ProposerAddress), crypto.AddressSize)
+		}
+	}
+
 	return nil
 }
 
@@ -988,11 +1040,14 @@ func (commit *Commit) WrappedExtendedCommit() *ExtendedCommit {
 			CommitSig: s,
 		}
 	}
+	roundProposers := make([]ProposerRoundInfo, len(commit.RoundProposers))
+	copy(roundProposers, commit.RoundProposers)
 	return &ExtendedCommit{
 		Height:             commit.Height,
 		Round:              commit.Round,
 		BlockID:            commit.BlockID,
 		ExtendedSignatures: cs,
+		RoundProposers:     roundProposers,
 	}
 }
 
@@ -1033,6 +1088,12 @@ func (commit *Commit) ToProto() *cmtproto.Commit {
 	}
 	c.Signatures = sigs
 
+	roundProposers := make([]cmtproto.ProposerRoundInfo, len(commit.RoundProposers))
+	for i := range commit.RoundProposers {
+		roundProposers[i] = *commit.RoundProposers[i].ToProto()
+	}
+	c.RoundProposers = roundProposers
+
 	c.Height = commit.Height
 	c.Round = commit.Round
 	c.BlockID = commit.BlockID.ToProto()
@@ -1062,6 +1123,16 @@ func CommitFromProto(cp *cmtproto.Commit) (*Commit, error) {
 	}
 	commit.Signatures = sigs
 
+	roundProposers := make([]ProposerRoundInfo, len(cp.RoundProposers))
+	for i := range cp.RoundProposers {
+		pri, err := ProposerRoundInfoFromProto(&cp.RoundProposers[i])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ProposerRoundInfo #%d: %w", i, err)
+		}
+		roundProposers[i] = *pri
+	}
+	commit.RoundProposers = roundProposers
+
 	commit.Height = cp.Height
 	commit.Round = cp.Round
 	commit.BlockID = *bi
@@ -1079,6 +1150,11 @@ type ExtendedCommit struct {
 	BlockID            BlockID
 	ExtendedSignatures []ExtendedCommitSig
 
+	// RoundProposers tracks all proposers and their proposal status for each round
+	// that occurred before the block was committed. This allows tracking which
+	// validators missed their proposal opportunity.
+	RoundProposers []ProposerRoundInfo
+
 	bitArray *bits.BitArray
 }
 
@@ -1086,8 +1162,11 @@ type ExtendedCommit struct {
 func (ec *ExtendedCommit) Clone() *ExtendedCommit {
 	sigs := make([]ExtendedCommitSig, len(ec.ExtendedSignatures))
 	copy(sigs, ec.ExtendedSignatures)
+	roundProposers := make([]ProposerRoundInfo, len(ec.RoundProposers))
+	copy(roundProposers, ec.RoundProposers)
 	ecc := *ec
 	ecc.ExtendedSignatures = sigs
+	ecc.RoundProposers = roundProposers
 	return &ecc
 }
 
@@ -1157,11 +1236,14 @@ func (ec *ExtendedCommit) ToCommit() *Commit {
 	for idx, ecs := range ec.ExtendedSignatures {
 		cs[idx] = ecs.CommitSig
 	}
+	roundProposers := make([]ProposerRoundInfo, len(ec.RoundProposers))
+	copy(roundProposers, ec.RoundProposers)
 	return &Commit{
-		Height:     ec.Height,
-		Round:      ec.Round,
-		BlockID:    ec.BlockID,
-		Signatures: cs,
+		Height:         ec.Height,
+		Round:          ec.Round,
+		BlockID:        ec.BlockID,
+		Signatures:     cs,
+		RoundProposers: roundProposers,
 	}
 }
 
@@ -1258,6 +1340,18 @@ func (ec *ExtendedCommit) ValidateBasic() error {
 			}
 		}
 	}
+
+	// Validate round proposers
+	for i, pri := range ec.RoundProposers {
+		if pri.Round < 0 {
+			return fmt.Errorf("negative round in ProposerRoundInfo #%d", i)
+		}
+		if len(pri.ProposerAddress) != crypto.AddressSize {
+			return fmt.Errorf("invalid proposer address length in ProposerRoundInfo #%d: got %d, expected %d",
+				i, len(pri.ProposerAddress), crypto.AddressSize)
+		}
+	}
+
 	return nil
 }
 
@@ -1273,6 +1367,12 @@ func (ec *ExtendedCommit) ToProto() *cmtproto.ExtendedCommit {
 		sigs[i] = *ec.ExtendedSignatures[i].ToProto()
 	}
 	c.ExtendedSignatures = sigs
+
+	roundProposers := make([]cmtproto.ProposerRoundInfo, len(ec.RoundProposers))
+	for i := range ec.RoundProposers {
+		roundProposers[i] = *ec.RoundProposers[i].ToProto()
+	}
+	c.RoundProposers = roundProposers
 
 	c.Height = ec.Height
 	c.Round = ec.Round
@@ -1302,6 +1402,17 @@ func ExtendedCommitFromProto(ecp *cmtproto.ExtendedCommit) (*ExtendedCommit, err
 		}
 	}
 	extCommit.ExtendedSignatures = sigs
+
+	roundProposers := make([]ProposerRoundInfo, len(ecp.RoundProposers))
+	for i := range ecp.RoundProposers {
+		pri, err := ProposerRoundInfoFromProto(&ecp.RoundProposers[i])
+		if err != nil {
+			return nil, fmt.Errorf("invalid ProposerRoundInfo #%d: %w", i, err)
+		}
+		roundProposers[i] = *pri
+	}
+	extCommit.RoundProposers = roundProposers
+
 	extCommit.Height = ecp.Height
 	extCommit.Round = ecp.Round
 	extCommit.BlockID = *bi
