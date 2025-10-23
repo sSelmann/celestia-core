@@ -16,6 +16,16 @@ var TM2PB = tm2pb{}
 type tm2pb struct{}
 
 func (tm2pb) Header(header *Header) cmtproto.Header {
+	// Convert ProposerRounds to proto format
+	protoRounds := make([]*cmtproto.ProposerInfo, len(header.ProposerRounds))
+	for i, r := range header.ProposerRounds {
+		protoRounds[i] = &cmtproto.ProposerInfo{
+			Round:           r.Round,
+			ProposerAddress: r.ProposerAddress,
+			Proposed:        r.Proposed,
+		}
+	}
+
 	return cmtproto.Header{
 		Version: header.Version,
 		ChainID: header.ChainID,
@@ -35,6 +45,8 @@ func (tm2pb) Header(header *Header) cmtproto.Header {
 
 		EvidenceHash:    header.EvidenceHash,
 		ProposerAddress: header.ProposerAddress,
+
+		ProposerRounds: protoRounds,
 	}
 }
 

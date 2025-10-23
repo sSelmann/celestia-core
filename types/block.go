@@ -345,6 +345,13 @@ func MaxDataBytesNoEvidence(maxBytes int64, valsCount int) int64 {
 
 //-----------------------------------------------------------------------------
 
+// ProposerInfo tracks proposer for each round during block creation
+type ProposerInfo struct {
+	Round           int32   `json:"round"`
+	ProposerAddress Address `json:"proposer_address"`
+	Proposed        bool    `json:"proposed"`
+}
+
 // Header defines the structure of a CometBFT block header.
 // NOTE: changes to the Header should be duplicated in:
 // - header.Hash()
@@ -376,6 +383,9 @@ type Header struct {
 	// consensus info
 	EvidenceHash    cmtbytes.HexBytes `json:"evidence_hash"`    // evidence included in the block
 	ProposerAddress Address           `json:"proposer_address"` // original proposer of the block
+
+	// proposer rounds info - tracks all proposers for each round
+	ProposerRounds []*ProposerInfo `json:"proposer_rounds,omitempty"`
 }
 
 // Populate the Header with state-derived data.
@@ -547,6 +557,19 @@ func (h *Header) ToProto() *cmtproto.Header {
 		return nil
 	}
 
+	// Convert ProposerRounds to proto format
+	var protoRounds []*cmtproto.ProposerInfo
+	if len(h.ProposerRounds) > 0 {
+		protoRounds = make([]*cmtproto.ProposerInfo, len(h.ProposerRounds))
+		for i, r := range h.ProposerRounds {
+			protoRounds[i] = &cmtproto.ProposerInfo{
+				Round:           r.Round,
+				ProposerAddress: r.ProposerAddress,
+				Proposed:        r.Proposed,
+			}
+		}
+	}
+
 	return &cmtproto.Header{
 		Version:            h.Version,
 		ChainID:            h.ChainID,
@@ -562,6 +585,7 @@ func (h *Header) ToProto() *cmtproto.Header {
 		LastResultsHash:    h.LastResultsHash,
 		LastCommitHash:     h.LastCommitHash,
 		ProposerAddress:    h.ProposerAddress,
+		ProposerRounds:     protoRounds,
 	}
 }
 
@@ -594,6 +618,18 @@ func HeaderFromProto(ph *cmtproto.Header) (Header, error) {
 	h.LastResultsHash = ph.LastResultsHash
 	h.LastCommitHash = ph.LastCommitHash
 	h.ProposerAddress = ph.ProposerAddress
+
+	// Convert ProposerRounds from proto format
+	if len(ph.ProposerRounds) > 0 {
+		h.ProposerRounds = make([]*ProposerInfo, len(ph.ProposerRounds))
+		for i, pr := range ph.ProposerRounds {
+			h.ProposerRounds[i] = &ProposerInfo{
+				Round:           pr.Round,
+				ProposerAddress: pr.ProposerAddress,
+				Proposed:        pr.Proposed,
+			}
+		}
+	}
 
 	return *h, h.ValidateBasic()
 }
