@@ -43,6 +43,13 @@ message BlockID {
 
 // --------------------------------
 
+// ProposerInfo tracks proposer for each round during block creation
+message ProposerInfo {
+  int32 round            = 1;  // Round number
+  bytes proposer_address = 2;  // Proposer for this round
+  bool  proposed         = 3;  // Whether proposer successfully proposed
+}
+
 // Header defines the structure of a block header.
 message Header {
   // basic block info
@@ -67,7 +74,10 @@ message Header {
 
   // consensus info
   bytes evidence_hash    = 13;  // evidence included in the block
-  bytes proposer_address = 14;  // original proposer of the block
+  bytes proposer_address = 14;  // original proposer of the block (final round)
+  
+  // proposer rounds info - tracks all proposers for each round
+  repeated ProposerInfo proposer_rounds = 15;  // all rounds during block creation
 }
 
 // Data contains the set of transactions included in the block

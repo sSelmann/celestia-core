@@ -130,6 +130,7 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	state State,
 	lastExtCommit *types.ExtendedCommit,
 	proposerAddr []byte,
+	proposerRounds []*types.ProposerInfo,
 ) (*types.Block, *types.PartSet, error) {
 
 	maxBytes := state.ConsensusParams.Block.MaxBytes
@@ -156,6 +157,8 @@ func (blockExec *BlockExecutor) CreateProposalBlock(
 	txs := blockExec.mempool.ReapMaxBytesMaxGas(maxReapBytes, maxGas)
 	commit := lastExtCommit.ToCommit()
 	block := state.MakeBlockWithoutPartset(height, types.MakeData(types.TxsFromCachedTxs(txs)), commit, evidence, proposerAddr)
+	// Add proposer rounds information to block header
+	block.Header.ProposerRounds = proposerRounds
 	req := &abci.RequestPrepareProposal{
 		MaxTxBytes:         maxDataBytes,
 		Txs:                block.Txs.ToSliceOfBytes(),

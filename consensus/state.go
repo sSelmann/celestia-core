@@ -1458,7 +1458,24 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 
 	proposerAddr := cs.privValidatorPubKey.Address()
 
-	return cs.blockExec.CreateProposalBlock(ctx, cs.rs.Height, cs.state, lastExtCommit, proposerAddr)
+	// Collect proposer rounds information
+	cs.proposerRoundsMtx.RLock()
+	proposerRounds := make([]*types.ProposerInfo, 0, len(cs.proposerRounds))
+	for _, roundInfo := range cs.proposerRounds {
+		proposerRounds = append(proposerRounds, &types.ProposerInfo{
+			Round:           roundInfo.Round,
+			ProposerAddress: roundInfo.ProposerAddress,
+			Proposed:        roundInfo.Proposed,
+		})
+	}
+	cs.proposerRoundsMtx.RUnlock()
+
+	// Sort by round number
+	sort.Slice(proposerRounds, func(i, j int) bool {
+		return proposerRounds[i].Round < proposerRounds[j].Round
+	})
+
+	return cs.blockExec.CreateProposalBlock(ctx, cs.rs.Height, cs.state, lastExtCommit, proposerAddr, proposerRounds)
 }
 
 // Enter: `timeoutPropose` after entering Propose.
