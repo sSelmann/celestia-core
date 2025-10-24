@@ -172,6 +172,10 @@ type State struct {
 	// Key: round number, Value: ProposerRoundInfo
 	roundProposersMtx cmtsync.RWMutex
 	roundProposers    map[int32]*types.ProposerRoundInfo
+
+	// lastCommitRoundProposers preserves RoundProposers from the previous block's ExtendedCommit
+	// This is needed because VoteSet doesn't preserve this information
+	lastCommitRoundProposers []types.ProposerRoundInfo
 }
 
 // StateOption sets an optional parameter on the State.
@@ -731,6 +735,10 @@ func (cs *State) votesFromExtendedCommit(state sm.State) (*types.VoteSet, error)
 		return nil, fmt.Errorf("heights don't match in votesFromExtendedCommit %v!=%v",
 			ec.Height, state.LastBlockHeight)
 	}
+	// Preserve RoundProposers from ExtendedCommit before converting to VoteSet
+	cs.lastCommitRoundProposers = make([]types.ProposerRoundInfo, len(ec.RoundProposers))
+	copy(cs.lastCommitRoundProposers, ec.RoundProposers)
+	
 	vs := ec.ToExtendedVoteSet(state.ChainID, state.LastValidators)
 	if !vs.HasTwoThirdsMajority() {
 		return nil, errors.New("extended commit does not have +2/3 majority")
@@ -750,6 +758,10 @@ func (cs *State) votesFromSeenCommit(state sm.State) (*types.VoteSet, error) {
 		return nil, fmt.Errorf("heights don't match in votesFromSeenCommit %v!=%v",
 			commit.Height, state.LastBlockHeight)
 	}
+	// Preserve RoundProposers from Commit before converting to VoteSet
+	cs.lastCommitRoundProposers = make([]types.ProposerRoundInfo, len(commit.RoundProposers))
+	copy(cs.lastCommitRoundProposers, commit.RoundProposers)
+	
 	vs := commit.ToVoteSet(state.ChainID, state.LastValidators)
 	if !vs.HasTwoThirdsMajority() {
 		return nil, errors.New("commit does not have +2/3 majority")
@@ -1466,6 +1478,10 @@ func (cs *State) createProposalBlock(ctx context.Context) (block *types.Block, b
 	case cs.rs.LastCommit.HasTwoThirdsMajority():
 		// Make the commit from LastCommit
 		lastExtCommit = cs.rs.LastCommit.MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
+		// Restore RoundProposers that was lost during VoteSet conversion
+		if len(cs.lastCommitRoundProposers) > 0 {
+			lastExtCommit.RoundProposers = cs.lastCommitRoundProposers
+		}
 
 	default: // This shouldn't happen.
 		return nil, nil, errors.New("propose step; cannot propose anything without commit for the previous block")
@@ -1935,16 +1951,21 @@ func (cs *State) finalizeCommit(height int64) {
 		// but may differ from the LastCommit included in the next block
 		seenExtendedCommit := cs.rs.Votes.Precommits(cs.rs.CommitRound).MakeExtendedCommit(cs.state.ConsensusParams.ABCI)
 		
-		// Add round proposers information to the commit
-		cs.roundProposersMtx.RLock()
-		roundProposers := make([]types.ProposerRoundInfo, 0, len(cs.roundProposers))
-		for i := int32(0); i <= cs.rs.CommitRound; i++ {
-			if pri, ok := cs.roundProposers[i]; ok {
-				roundProposers = append(roundProposers, *pri)
+		// Add round proposers information to the commit, but ONLY if round > 0
+		// Round 0 commits don't need this data as there were no missed proposals
+		// This saves ~99% storage space as most blocks commit in round 0
+		if cs.rs.CommitRound > 0 {
+			cs.roundProposersMtx.RLock()
+			roundProposers := make([]types.ProposerRoundInfo, 0, len(cs.roundProposers))
+			for i := int32(0); i <= cs.rs.CommitRound; i++ {
+				if pri, ok := cs.roundProposers[i]; ok {
+					roundProposers = append(roundProposers, *pri)
+				}
 			}
+			cs.roundProposersMtx.RUnlock()
+			seenExtendedCommit.RoundProposers = roundProposers
 		}
-		cs.roundProposersMtx.RUnlock()
-		seenExtendedCommit.RoundProposers = roundProposers
+		// If round == 0, seenExtendedCommit.RoundProposers remains nil/empty
 		
 		seenCommit = seenExtendedCommit.ToCommit()
 		cs.unlockAll()
