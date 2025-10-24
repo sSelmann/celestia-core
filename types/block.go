@@ -863,9 +863,10 @@ func (ecs *ExtendedCommitSig) FromProto(ecsp cmtproto.ExtendedCommitSig) error {
 // ProposerRoundInfo tracks which validator was the proposer for a round
 // and whether they successfully proposed a block for that round.
 type ProposerRoundInfo struct {
-	Round           int32   `json:"round"`
-	ProposerAddress Address `json:"proposer_address"`
-	Proposed        bool    `json:"proposed"` // true if proposer successfully proposed a block in this round
+	Round            int32   `json:"round"`
+	ProposerAddress  Address `json:"proposer_address"`
+	ProposalReceived bool    `json:"proposal_received"` // true if proposal message was received
+	BlockReceived    bool    `json:"block_received"`    // true if all block parts were received and block is complete
 }
 
 // ToProto converts ProposerRoundInfo to protobuf
@@ -874,9 +875,10 @@ func (pri *ProposerRoundInfo) ToProto() *cmtproto.ProposerRoundInfo {
 		return nil
 	}
 	return &cmtproto.ProposerRoundInfo{
-		Round:           pri.Round,
-		ProposerAddress: pri.ProposerAddress,
-		Proposed:        pri.Proposed,
+		Round:            pri.Round,
+		ProposerAddress:  pri.ProposerAddress,
+		ProposalReceived: pri.ProposalReceived,
+		BlockReceived:    pri.BlockReceived,
 	}
 }
 
@@ -886,9 +888,10 @@ func ProposerRoundInfoFromProto(prip *cmtproto.ProposerRoundInfo) (*ProposerRoun
 		return nil, errors.New("nil ProposerRoundInfo")
 	}
 	return &ProposerRoundInfo{
-		Round:           prip.Round,
-		ProposerAddress: prip.ProposerAddress,
-		Proposed:        prip.Proposed,
+		Round:            prip.Round,
+		ProposerAddress:  prip.ProposerAddress,
+		ProposalReceived: prip.ProposalReceived,
+		BlockReceived:    prip.BlockReceived,
 	}, nil
 }
 

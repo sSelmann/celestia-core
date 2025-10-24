@@ -128,9 +128,10 @@ message Vote {
 // ProposerRoundInfo tracks which validator was the proposer for a round
 // and whether they successfully proposed a block for that round.
 message ProposerRoundInfo {
-  int32 round            = 1;
-  bytes proposer_address = 2;
-  bool  proposed         = 3;  // true if proposer successfully proposed a block in this round
+  int32 round             = 1;
+  bytes proposer_address  = 2;
+  bool  proposal_received = 3;  // true if proposal message was received
+  bool  block_received    = 4;  // true if all block parts were received and block is complete
 }
 
 // Commit contains the evidence that a block was committed by a set of validators.

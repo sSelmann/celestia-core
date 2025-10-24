@@ -1238,9 +1238,10 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	// Track proposer for this round
 	cs.roundProposersMtx.Lock()
 	cs.roundProposers[round] = &types.ProposerRoundInfo{
-		Round:           round,
-		ProposerAddress: proposer.Address,
-		Proposed:        false, // Will be set to true when proposal is received
+		Round:            round,
+		ProposerAddress:  proposer.Address,
+		ProposalReceived: false, // Will be set to true when proposal message is received
+		BlockReceived:    false, // Will be set to true when all block parts are received
 	}
 	cs.roundProposersMtx.Unlock()
 	if proposer != nil {
@@ -2199,10 +2200,10 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
 
-	// Mark that proposer successfully proposed for this round
+	// Mark that proposal message was received for this round
 	cs.roundProposersMtx.Lock()
 	if pri, ok := cs.roundProposers[proposal.Round]; ok {
-		pri.Proposed = true
+		pri.ProposalReceived = true
 	}
 	cs.roundProposersMtx.Unlock()
 
@@ -2289,6 +2290,13 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 }
 
 func (cs *State) handleCompleteProposal(blockHeight int64) {
+	// Mark that block was fully received for this round
+	cs.roundProposersMtx.Lock()
+	if pri, ok := cs.roundProposers[cs.rs.Round]; ok {
+		pri.BlockReceived = true
+	}
+	cs.roundProposersMtx.Unlock()
+
 	// Update Valid* if we can.
 	prevotes := cs.rs.Votes.Prevotes(cs.rs.Round)
 	blockID, hasTwoThirds := prevotes.TwoThirdsMajority()
