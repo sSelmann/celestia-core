@@ -882,7 +882,9 @@ func (cs *State) updateToState(state sm.State) {
 	cs.currentRoundProposer.proposalReceived = false
 	cs.currentRoundProposer.blockReceived = false
 	
-	cs.Logger.Info("TRACE: Reset proposer tracking for new height", "height", height)
+	if cs.Logger != nil {
+		cs.Logger.Info("TRACE: Reset proposer tracking for new height", "height", height)
+	}
 
 	// Finally, broadcast RoundState
 	cs.newStep()
