@@ -881,6 +881,8 @@ func (cs *State) updateToState(state sm.State) {
 	cs.currentRoundProposer.address = nil
 	cs.currentRoundProposer.proposalReceived = false
 	cs.currentRoundProposer.blockReceived = false
+	
+	cs.Logger.Info("TRACE: Reset proposer tracking for new height", "height", height)
 
 	// Finally, broadcast RoundState
 	cs.newStep()
@@ -1222,6 +1224,14 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		
 		// Trace the previous round's proposer as a miss (since we're entering a new round)
 		if len(cs.currentRoundProposer.address) > 0 {
+			logger.Info("TRACE: Writing proposer miss",
+				"height", height,
+				"round", prevRound,
+				"proposer", types.Address(cs.currentRoundProposer.address).String(),
+				"proposal_received", cs.currentRoundProposer.proposalReceived,
+				"block_received", cs.currentRoundProposer.blockReceived,
+				"is_collecting", cs.traceClient.IsCollecting("proposer_miss"),
+			)
 			schema.WriteProposerMiss(
 				cs.traceClient,
 				height,
@@ -1230,6 +1240,8 @@ func (cs *State) enterNewRound(height int64, round int32) {
 				cs.currentRoundProposer.proposalReceived,
 				cs.currentRoundProposer.blockReceived,
 			)
+		} else {
+			logger.Info("TRACE: Skipping proposer miss (no address)", "height", height, "round", prevRound)
 		}
 	}
 
@@ -1237,6 +1249,12 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	cs.currentRoundProposer.address = propAddress
 	cs.currentRoundProposer.proposalReceived = false
 	cs.currentRoundProposer.blockReceived = false
+
+	logger.Info("TRACE: Tracking proposer for new round",
+		"height", height,
+		"round", round,
+		"proposer", types.Address(propAddress).String(),
+	)
 
 	logger.Debug("entering new round",
 		"previous", log.NewLazySprintf("%v/%v/%v", prevHeight, prevRound, prevStep),
@@ -2200,6 +2218,7 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 	cs.currentRoundProposer.proposalReceived = true
 
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
+	cs.Logger.Info("TRACE: Marked proposal_received=true", "height", proposal.Height, "round", proposal.Round)
 	return nil
 }
 
@@ -2276,6 +2295,7 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())
+		cs.Logger.Info("TRACE: Marked block_received=true", "height", cs.rs.ProposalBlock.Height, "round", cs.rs.Round)
 
 		if err := cs.eventBus.PublishEventCompleteProposal(cs.rs.CompleteProposalEvent()); err != nil {
 			cs.Logger.Error("failed publishing event complete proposal", "err", err)
