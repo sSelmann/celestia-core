@@ -192,8 +192,11 @@ func (lt *LocalTracer) drainCanal() {
 	// purposefully do not lock, and rely on the channel to provide sync
 	// actions, to avoid overhead of locking with each event save.
 	for ev := range lt.canal {
+		lt.logger.Info("TRACE_DEBUG: Received event from canal", "table", ev.Table)
 		if err := lt.saveEventToFile(ev); err != nil {
-			lt.logger.Error("failed to save event to file", "error", err)
+			lt.logger.Error("failed to save event to file", "table", ev.Table, "error", err)
+		} else {
+			lt.logger.Info("TRACE_DEBUG: Successfully saved event", "table", ev.Table)
 		}
 	}
 }
