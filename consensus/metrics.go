@@ -134,6 +134,10 @@ type Metrics struct {
 	ApplicationRejectedProposals metrics.Counter
 	// TimedOutProposals is the number of proposals that failed to be received in time.
 	TimedOutProposals metrics.Counter
+
+	// ProposerMissedSlots is the total number of times a validator missed their proposal slot.
+	// This is incremented when a validator fails to send a proposal during their assigned round.
+	ProposerMissedSlots metrics.Counter `metrics_labels:"proposer_address"`
 }
 
 func (m *Metrics) MarkProposalProcessed(accepted bool) {

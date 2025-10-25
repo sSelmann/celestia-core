@@ -1192,7 +1192,9 @@ func (cs *State) enterNewRound(height int64, round int32) {
 	if round > 0 && cs.rs.Validators != nil && cs.rs.Proposal == nil {
 		prevProposer := cs.rs.Validators.GetProposer()
 		if prevProposer != nil {
-			schema.WriteProposerMiss(cs.traceClient, height, prevRound, prevProposer.Address.String())
+			proposerAddr := prevProposer.Address.String()
+			schema.WriteProposerMiss(cs.traceClient, height, prevRound, proposerAddr)
+			cs.metrics.ProposerMissedSlots.With("proposer_address", proposerAddr).Add(1)
 		}
 	}
 
