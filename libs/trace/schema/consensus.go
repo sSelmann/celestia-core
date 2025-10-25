@@ -21,6 +21,7 @@ func ConsensusTables() []string {
 		GapTable,
 		RetriesTable,
 		CatchupRequestsTable,
+		ProposerMissTable,
 	}
 }
 
@@ -422,5 +423,27 @@ func WriteGap(
 	client.Write(Gap{
 		Height: height,
 		Round:  round,
+	})
+}
+
+const (
+	ProposerMissTable = "proposer_miss"
+)
+
+type ProposerMiss struct {
+	Height          int64  `json:"height"`
+	Round           int32  `json:"round"`
+	ProposerAddress string `json:"proposer_address"`
+}
+
+func (ProposerMiss) Table() string {
+	return ProposerMissTable
+}
+
+func WriteProposerMiss(client trace.Tracer, height int64, round int32, proposerAddress string) {
+	client.Write(ProposerMiss{
+		Height:          height,
+		Round:           round,
+		ProposerAddress: proposerAddress,
 	})
 }
