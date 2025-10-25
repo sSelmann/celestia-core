@@ -1187,9 +1187,8 @@ func (cs *State) enterNewRound(height int64, round int32) {
 
 	prevHeight, prevRound, prevStep := cs.rs.Height, cs.rs.Round, cs.rs.Step
 
-	// If moving to a new round (not round 0), check if previous proposer missed
-	// Only count as miss if proposal was never received (Proposal == nil)
-	if round > 0 && cs.rs.Validators != nil && cs.rs.Proposal == nil {
+	// If moving to a new round (not round 0), trace the previous round's proposer as a miss
+	if round > 0 && cs.rs.Validators != nil {
 		prevProposer := cs.rs.Validators.GetProposer()
 		if prevProposer != nil {
 			schema.WriteProposerMiss(cs.traceClient, height, prevRound, prevProposer.Address.String())
