@@ -431,19 +431,24 @@ const (
 )
 
 type ProposerMiss struct {
-	Height          int64  `json:"height"`
-	Round           int32  `json:"round"`
-	ProposerAddress string `json:"proposer_address"`
+	Height   int64  `json:"height"`
+	Round    int32  `json:"round"`
+	Proposer string `json:"proposer"`
 }
 
-func (ProposerMiss) Table() string {
+func (p ProposerMiss) Table() string {
 	return ProposerMissTable
 }
 
-func WriteProposerMiss(client trace.Tracer, height int64, round int32, proposerAddress string) {
+func WriteProposerMiss(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	proposerAddress string,
+) {
 	client.Write(ProposerMiss{
-		Height:          height,
-		Round:           round,
-		ProposerAddress: proposerAddress,
+		Height:   height,
+		Round:    round,
+		Proposer: proposerAddress,
 	})
 }
