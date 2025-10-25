@@ -1189,21 +1189,10 @@ func (cs *State) enterNewRound(height int64, round int32) {
 
 	// If moving to a new round (not round 0), check if previous proposer missed
 	// Only count as miss if proposal was never received (Proposal == nil)
-	if round > 0 {
-		logger.Info("DEBUG: Round change detected",
-			"prev_round", prevRound,
-			"new_round", round,
-			"validators_nil", cs.rs.Validators == nil,
-			"proposal_nil", cs.rs.Proposal == nil,
-		)
-		if cs.rs.Validators != nil && cs.rs.Proposal == nil {
-			prevProposer := cs.rs.Validators.GetProposer()
-			if prevProposer != nil {
-				logger.Info("DEBUG: Writing proposer miss", "proposer", prevProposer.Address.String())
-				schema.WriteProposerMiss(cs.traceClient, height, prevRound, prevProposer.Address.String())
-			} else {
-				logger.Info("DEBUG: prevProposer is nil")
-			}
+	if round > 0 && cs.rs.Validators != nil && cs.rs.Proposal == nil {
+		prevProposer := cs.rs.Validators.GetProposer()
+		if prevProposer != nil {
+			schema.WriteProposerMiss(cs.traceClient, height, prevRound, prevProposer.Address.String())
 		}
 	}
 
