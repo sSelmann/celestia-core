@@ -167,6 +167,13 @@ type State struct {
 
 	// traceClient is used to trace the state machine.
 	traceClient trace.Tracer
+
+	// currentRoundProposer tracks proposer info for the current round (for tracing misses)
+	currentRoundProposer struct {
+		address          []byte
+		proposalReceived bool
+		blockReceived    bool
+	}
 }
 
 // StateOption sets an optional parameter on the State.
@@ -870,6 +877,11 @@ func (cs *State) updateToState(state sm.State) {
 
 	cs.state = state
 
+	// Reset proposer tracking for new height
+	cs.currentRoundProposer.address = nil
+	cs.currentRoundProposer.proposalReceived = false
+	cs.currentRoundProposer.blockReceived = false
+
 	// Finally, broadcast RoundState
 	cs.newStep()
 }
@@ -1207,7 +1219,24 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		cs.rs.Proposal = nil
 		cs.rs.ProposalBlock = nil
 		cs.rs.ProposalBlockParts = nil
+		
+		// Trace the previous round's proposer as a miss (since we're entering a new round)
+		if len(cs.currentRoundProposer.address) > 0 {
+			schema.WriteProposerMiss(
+				cs.traceClient,
+				height,
+				prevRound,
+				types.Address(cs.currentRoundProposer.address).String(),
+				cs.currentRoundProposer.proposalReceived,
+				cs.currentRoundProposer.blockReceived,
+			)
+		}
 	}
+
+	// Track new round's proposer
+	cs.currentRoundProposer.address = propAddress
+	cs.currentRoundProposer.proposalReceived = false
+	cs.currentRoundProposer.blockReceived = false
 
 	logger.Debug("entering new round",
 		"previous", log.NewLazySprintf("%v/%v/%v", prevHeight, prevRound, prevStep),
@@ -2167,6 +2196,9 @@ func (cs *State) defaultSetProposal(proposal *types.Proposal) error {
 		cs.rs.ProposalBlockParts = types.NewPartSetFromHeader(proposal.BlockID.PartSetHeader, types.BlockPartSizeBytes)
 	}
 
+	// Track that we received the proposal for this round
+	cs.currentRoundProposer.proposalReceived = true
+
 	cs.Logger.Info("received proposal", "proposal", proposal, "proposer", pubKey.Address())
 	return nil
 }
@@ -2238,6 +2270,9 @@ func (cs *State) addProposalBlockPart(msg *BlockPartMessage, peerID p2p.ID) (add
 		}
 
 		cs.rs.ProposalBlock = block
+
+		// Track that we received the complete block for this round
+		cs.currentRoundProposer.blockReceived = true
 
 		// NOTE: it's possible to receive complete proposal blocks for future rounds without having the proposal
 		cs.Logger.Info("received complete proposal block", "height", cs.rs.ProposalBlock.Height, "hash", cs.rs.ProposalBlock.Hash())

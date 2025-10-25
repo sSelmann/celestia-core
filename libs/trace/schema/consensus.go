@@ -21,6 +21,7 @@ func ConsensusTables() []string {
 		GapTable,
 		RetriesTable,
 		CatchupRequestsTable,
+		ProposerMissTable,
 	}
 }
 
@@ -422,5 +423,44 @@ func WriteGap(
 	client.Write(Gap{
 		Height: height,
 		Round:  round,
+	})
+}
+
+const (
+	ProposerMissTable = "proposer_miss"
+)
+
+// ProposerMiss tracks when a proposer fails to propose a block in their assigned round
+type ProposerMiss struct {
+	Height           int64  `json:"height"`
+	Round            int32  `json:"round"`
+	ProposerAddress  string `json:"proposer_address"`
+	ProposalReceived bool   `json:"proposal_received"` // Did we receive proposal message?
+	BlockReceived    bool   `json:"block_received"`    // Did we receive complete block?
+}
+
+func (ProposerMiss) Table() string {
+	return ProposerMissTable
+}
+
+// WriteProposerMiss writes a trace entry when consensus moves to a new round
+// without committing, indicating the previous round's proposer missed or had issues
+func WriteProposerMiss(
+	client trace.Tracer,
+	height int64,
+	round int32,
+	proposerAddress string,
+	proposalReceived bool,
+	blockReceived bool,
+) {
+	if !client.IsCollecting(ProposerMissTable) {
+		return
+	}
+	client.Write(ProposerMiss{
+		Height:           height,
+		Round:            round,
+		ProposerAddress:  proposerAddress,
+		ProposalReceived: proposalReceived,
+		BlockReceived:    blockReceived,
 	})
 }
