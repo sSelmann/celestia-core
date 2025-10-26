@@ -135,7 +135,7 @@ type Metrics struct {
 	// TimedOutProposals is the number of proposals that failed to be received in time.
 	TimedOutProposals metrics.Counter
 
-	// Number of proposals missed by each proposer.
+	// ProposerMissedProposals is the number of proposals missed by each proposer.
 	ProposerMissedProposals metrics.Counter `metrics_labels:"proposer_address"`
 }
 

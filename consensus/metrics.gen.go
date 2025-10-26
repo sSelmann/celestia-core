@@ -226,7 +226,7 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
 			Name:      "proposer_missed_proposals",
-			Help:      "Number of proposals missed by each proposer.",
+			Help:      "ProposerMissedProposals is the number of proposals missed by each proposer.",
 		}, append(labels, "proposer_address")).With(labelsAndValues...),
 	}
 }
