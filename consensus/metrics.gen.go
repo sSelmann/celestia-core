@@ -222,11 +222,11 @@ func PrometheusMetrics(namespace string, labelsAndValues ...string) *Metrics {
 			Name:      "timed_out_proposals",
 			Help:      "TimedOutProposals is the number of proposals that failed to be received in time.",
 		}, labels).With(labelsAndValues...),
-		ProposerMissedSlots: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		ProposerMissedProposals: prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: MetricsSubsystem,
-			Name:      "proposer_missed_slots",
-			Help:      "ProposerMissedSlots is the total number of times a validator missed their proposal slot. This is incremented when a validator fails to send a proposal during their assigned round.",
+			Name:      "proposer_missed_proposals",
+			Help:      "Number of proposals missed by each proposer.",
 		}, append(labels, "proposer_address")).With(labelsAndValues...),
 	}
 }
@@ -267,6 +267,6 @@ func NopMetrics() *Metrics {
 		BlockTimeSeconds:             discard.NewGauge(),
 		ApplicationRejectedProposals: discard.NewCounter(),
 		TimedOutProposals:            discard.NewCounter(),
-		ProposerMissedSlots:          discard.NewCounter(),
+		ProposerMissedProposals:      discard.NewCounter(),
 	}
 }

@@ -1194,7 +1194,7 @@ func (cs *State) enterNewRound(height int64, round int32) {
 		if prevProposer != nil {
 			proposerAddr := prevProposer.Address.String()
 			schema.WriteProposerMiss(cs.traceClient, height, prevRound, proposerAddr)
-			cs.metrics.ProposerMissedSlots.With("proposer_address", proposerAddr).Add(1)
+			cs.metrics.ProposerMissedProposals.With("proposer_address", proposerAddr).Add(1)
 		}
 	}
 
