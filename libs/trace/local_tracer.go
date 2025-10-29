@@ -184,6 +184,13 @@ func (lt *LocalTracer) saveEventToFile(event Event[Entry]) error {
 		return fmt.Errorf("failed to write event to file: %v", err)
 	}
 
+	// Flush immediately for rare events like missed_proposals to ensure data is written
+	if event.Table == "missed_proposals" {
+		if err := file.Flush(); err != nil {
+			return fmt.Errorf("failed to flush file: %v", err)
+		}
+	}
+
 	return nil
 }
 
