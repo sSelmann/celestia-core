@@ -91,6 +91,16 @@ func (f *bufferedFile) File() (*os.File, func() error, error) {
 	return f.file, f.stopReading, nil
 }
 
+// Flush flushes any buffered data to the underlying file.
+func (f *bufferedFile) Flush() error {
+	if f.reading.Load() {
+		return nil
+	}
+	f.mut.Lock()
+	defer f.mut.Unlock()
+	return f.wr.Flush()
+}
+
 // Close closes the file.
 func (f *bufferedFile) Close() error {
 	// set reading to true to prevent writes while closing the file.
